@@ -262,7 +262,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 /* 品牌文字 */
 .splash-content{position:absolute;top:22%;left:50%;transform:translateX(-50%);text-align:center;z-index:5;}
 .splash-logo{font-size:36px;margin-bottom:12px;opacity:0;animation:fadeUp 1s ease-out 0.8s forwards;filter:drop-shadow(0 2px 8px rgba(80,70,60,0.15));}
-.splash-title{font-size:52px;font-weight:300;color:#3a3530;letter-spacing:16px;margin-bottom:8px;font-family:"STKaiti","KaiTi","STSong","SimSun",serif;}
+.splash-title{font-size:64px;font-weight:900;color:#1a1510;letter-spacing:24px;margin-bottom:8px;font-family:"STKaiti","KaiTi",serif;text-shadow:1px 1px 2px rgba(40,30,20,0.15),-1px -1px 0 rgba(255,250,240,0.5);}
 .char-animate{display:inline-block;opacity:0;animation:charWrite 0.8s ease-out forwards;}
 .char-animate:nth-child(1){animation-delay:1.2s;}
 .char-animate:nth-child(2){animation-delay:1.6s;}
@@ -272,13 +272,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
   100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0);}
 }
 .splash-line{width:60px;height:1px;background:linear-gradient(90deg,transparent,rgba(80,70,60,0.3),transparent);margin:12px auto;opacity:0;animation:fadeUp 1s ease-out 2s forwards;}
-.splash-subtitle{font-size:15px;color:rgba(80,70,60,0.5);letter-spacing:6px;margin-bottom:12px;font-family:"STKaiti","KaiTi","STSong","SimSun",serif;opacity:0;animation:fadeUp 1s ease-out 2.3s forwards;}
+.splash-subtitle{font-size:16px;color:rgba(60,50,40,0.45);letter-spacing:8px;margin-bottom:12px;font-family:"STKaiti","KaiTi","FangSong","STFangsong",serif;opacity:0;animation:fadeUp 1s ease-out 2.3s forwards;}
 .splash-version{font-size:11px;color:rgba(80,70,60,0.25);letter-spacing:3px;opacity:0;animation:fadeUp 1s ease-out 2.6s forwards;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
 /* 底部进入区域 */
 .splash-bottom{position:absolute;bottom:12%;left:50%;transform:translateX(-50%);text-align:center;z-index:5;opacity:0;animation:fadeUp 1s ease-out 3s forwards;}
-.enter-btn{background:transparent;border:1px solid rgba(80,70,60,0.25);color:#4a4540;padding:14px 44px;font-size:15px;letter-spacing:8px;cursor:pointer;border-radius:2px;transition:all 0.5s ease;font-family:"STKaiti","KaiTi","STSong","SimSun",serif;}
+.enter-btn{background:transparent;border:1px solid rgba(60,50,40,0.2);color:#3a3530;padding:14px 44px;font-size:16px;letter-spacing:10px;cursor:pointer;border-radius:2px;transition:all 0.5s ease;font-family:"STKaiti","KaiTi","FangSong","STFangsong",serif;}
 .enter-btn:hover{background:rgba(80,70,60,0.06);border-color:rgba(80,70,60,0.4);letter-spacing:12px;box-shadow:0 4px 20px rgba(80,70,60,0.08);}
 .splash-hint{margin-top:16px;font-size:11px;color:rgba(80,70,60,0.25);letter-spacing:3px;}
 
@@ -299,10 +299,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 .guide-dot.active{background:rgba(80,70,60,0.5);width:20px;border-radius:4px;}
 .guide-content{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
 .guide-icon{font-size:40px;margin-bottom:16px;}
-.guide-title{font-size:20px;font-weight:600;color:#3a3530;margin-bottom:12px;letter-spacing:3px;font-family:"STKaiti","KaiTi",serif;}
+.guide-title{font-size:22px;font-weight:700;color:#2a2520;margin-bottom:12px;letter-spacing:4px;font-family:"STKaiti","KaiTi","FangSong","STFangsong",serif;}
 .guide-text{font-size:13.5px;color:rgba(80,70,60,0.55);line-height:2;padding:0 10px;}
 .guide-actions{display:flex;gap:12px;margin-top:24px;justify-content:center;}
-.guide-btn{padding:12px 28px;border-radius:6px;font-size:14px;cursor:pointer;transition:all 0.3s;letter-spacing:2px;border:none;font-family:"STKaiti","KaiTi",sans-serif;}
+.guide-btn{padding:12px 28px;border-radius:6px;font-size:14px;cursor:pointer;transition:all 0.3s;letter-spacing:3px;border:none;font-family:"STKaiti","KaiTi","FangSong","STFangsong",serif;}
 .guide-btn-prev{background:rgba(80,70,60,0.06);color:rgba(80,70,60,0.5);border:1px solid rgba(80,70,60,0.15);}
 .guide-btn-prev:hover{background:rgba(80,70,60,0.1);}
 .guide-btn-next{background:linear-gradient(135deg,#6a6055,#4a4540);color:#f0ebe2;font-weight:500;}
@@ -669,6 +669,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
           <label>已保存的API配置（点击切换）</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;" id="api-saved-list"></div>
           <button class="btn btn-secondary" onclick="saveCurrentAPI()" style="font-size:11px;">💾 保存当前配置</button>
+        </div>
+                <div class="form-group">
+          <label>API类型（大部分都兼容OpenAI格式，选对应的会自动填入地址）</label>
+          <select id="api-type" onchange="selectAPIType(this.value)">
+            <option value="custom">🔧 自定义</option>
+            <option value="openai">OpenAI（官方）</option>
+            <option value="openai-proxy">OpenAI（代理/中转）</option>
+            <option value="claude">Claude（Anthropic）</option>
+            <option value="claude-proxy">Claude（代理/中转）</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="deepseek">DeepSeek 深度求索</option>
+            <option value="qwen">通义千问（阿里）</option>
+            <option value="glm">智谱 GLM</option>
+            <option value="moonshot">Moonshot 月之暗面</option>
+            <option value="yi">零一万物（Yi）</option>
+            <option value="baichuan">百川智能</option>
+            <option value="minimax">MiniMax</option>
+            <option value="stepfun">阶跃星辰</option>
+            <option value="siliconflow">SiliconFlow 硅基流动</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="groq">Groq</option>
+            <option value="together">Together AI</option>
+            <option value="mistral">Mistral AI</option>
+            <option value="cohere">Cohere</option>
+          </select>
+          <div id="api-type-hint" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div>
         </div>
         <div class="form-group"><label>地址</label><input type="text" id="api-url" placeholder="https://api.openai.com/v1"/></div>
         <div class="form-group"><label>密钥</label><div class="form-row"><div class="form-group" style="margin-bottom:0"><input type="password" id="api-key" placeholder="sk-..."/></div><button class="btn btn-secondary" onclick="toggleKeyVis()">显示</button></div></div>
@@ -2575,7 +2601,7 @@ async function swipeNew(msgIdx){
     const msgs=buildMsgs(null,msgIdx);
     const ctrl=new AbortController();A.ctrl=ctrl;
     const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:true};
-    if(A.params.max_tokens>0)body.max_tokens=A.params.max_tokens;
+    body.max_tokens=A.params.max_tokens>0?A.params.max_tokens:28384;
     const r=await fetchWithRetry(A.api.url+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+A.api.key},body:JSON.stringify(body),signal:ctrl.signal},1,120000);
     let full='';const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
     const bubEl=getMsgBubble(msgIdx);
@@ -2794,7 +2820,7 @@ async function sendMessage(){
   try{
     const msgs=buildMsgs(null);const ctrl=new AbortController();A.ctrl=ctrl;
     const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:true};
-    if(A.params.max_tokens>0)body.max_tokens=A.params.max_tokens;
+    body.max_tokens=A.params.max_tokens>0?A.params.max_tokens:28384;
     // 【改动】使用 fetchWithRetry
     const r=await fetchWithRetry(A.api.url+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+A.api.key},body:JSON.stringify(body),signal:ctrl.signal},1,120000);
     const aiIdx=chat.messages.length;
@@ -3038,8 +3064,172 @@ function restoreAppearUI(){
 }
 
 // ===== API =====
+// ========================================
+// ===== 多API格式支持 =====
+// ========================================
+
+const API_PRESETS={
+  'custom':{
+    url:'',model:'',hint:'自定义API地址，填入兼容OpenAI格式的接口地址。'
+  },
+  'openai':{
+    url:'https://api.openai.com/v1',
+    model:'gpt-4o',
+    hint:'官方接口，需要海外网络。推荐模型：gpt-4o、gpt-4o-mini、o1-mini',
+    models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo','o1-mini','o1-preview']
+  },
+  'openai-proxy':{
+    url:'',model:'gpt-4o',
+    hint:'填入你的中转站地址（如 https://xxx.com/v1）。格式与OpenAI官方一致。',
+  },
+  'claude':{
+    url:'https://api.anthropic.com/v1',
+    model:'claude-sonnet-4-20250514',
+    hint:'Anthropic官方接口。注意：Claude原生API格式与OpenAI不同，需要中转站转换。建议使用Claude代理/中转。',
+    models:['claude-sonnet-4-20250514','claude-3-5-sonnet-20241022','claude-3-5-haiku-20241022','claude-3-opus-20240229']
+  },
+  'claude-proxy':{
+    url:'',model:'claude-sonnet-4-20250514',
+    hint:'填入支持Claude的中转站地址。大部分中转站会把Claude转成OpenAI兼容格式。',
+    models:['claude-sonnet-4-20250514','claude-3-5-sonnet-20241022','claude-3-5-haiku-20241022','claude-3-opus-20240229']
+  },
+  'gemini':{
+    url:'https://generativelanguage.googleapis.com/v1beta/openai',
+    model:'gemini-2.5-flash',
+    hint:'Google Gemini，使用OpenAI兼容模式。密钥在 aistudio.google.com 获取。',
+    models:['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash','gemini-1.5-pro']
+  },
+  'deepseek':{
+    url:'https://api.deepseek.com/v1',
+    model:'deepseek-chat',
+    hint:'深度求索，国产模型，性价比高。官网 platform.deepseek.com 获取密钥。',
+    models:['deepseek-chat','deepseek-reasoner']
+  },
+  'qwen':{
+    url:'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model:'qwen-plus',
+    hint:'阿里通义千问，OpenAI兼容模式。在阿里云百炼平台获取密钥。',
+    models:['qwen-turbo','qwen-plus','qwen-max','qwen-long']
+  },
+  'glm':{
+    url:'https://open.bigmodel.cn/api/paas/v4',
+    model:'glm-4-flash',
+    hint:'智谱AI，OpenAI兼容格式。官网 open.bigmodel.cn 获取密钥。',
+    models:['glm-4-flash','glm-4-air','glm-4-plus','glm-4']
+  },
+  'moonshot':{
+    url:'https://api.moonshot.cn/v1',
+    model:'moonshot-v1-8k',
+    hint:'月之暗面Kimi，OpenAI兼容格式。官网 platform.moonshot.cn 获取密钥。',
+    models:['moonshot-v1-8k','moonshot-v1-32k','moonshot-v1-128k']
+  },
+  'yi':{
+    url:'https://api.lingyiwanwu.com/v1',
+    model:'yi-large',
+    hint:'零一万物，OpenAI兼容格式。官网 platform.lingyiwanwu.com 获取密钥。',
+    models:['yi-large','yi-medium','yi-spark']
+  },
+  'baichuan':{
+    url:'https://api.baichuan-ai.com/v1',
+    model:'Baichuan4',
+    hint:'百川智能，OpenAI兼容格式。官网 platform.baichuan-ai.com 获取密钥。',
+    models:['Baichuan4','Baichuan3-Turbo','Baichuan2-Turbo']
+  },
+  'minimax':{
+    url:'https://api.minimax.chat/v1',
+    model:'MiniMax-Text-01',
+    hint:'MiniMax，OpenAI兼容格式。官网 platform.minimaxi.com 获取密钥。',
+    models:['MiniMax-Text-01','abab6.5s-chat','abab5.5-chat']
+  },
+  'stepfun':{
+    url:'https://api.stepfun.com/v1',
+    model:'step-2-16k',
+    hint:'阶跃星辰，OpenAI兼容格式。官网 platform.stepfun.com 获取密钥。',
+    models:['step-2-16k','step-1-8k','step-1-32k']
+  },
+  'siliconflow':{
+    url:'https://api.siliconflow.cn/v1',
+    model:'deepseek-ai/DeepSeek-V3',
+    hint:'硅基流动，聚合多种模型，OpenAI兼容格式。官网 siliconflow.cn 获取密钥。部分模型免费！',
+    models:['deepseek-ai/DeepSeek-V3','Qwen/Qwen2.5-72B-Instruct','meta-llama/Llama-3.3-70B-Instruct','THUDM/glm-4-9b-chat']
+  },
+  'openrouter':{
+    url:'https://openrouter.ai/api/v1',
+    model:'openai/gpt-4o',
+    hint:'OpenRouter聚合平台，一个密钥用所有模型。官网 openrouter.ai 获取密钥。',
+    models:['openai/gpt-4o','anthropic/claude-3.5-sonnet','google/gemini-2.0-flash-exp','deepseek/deepseek-chat','meta-llama/llama-3.3-70b-instruct']
+  },
+  'groq':{
+    url:'https://api.groq.com/openai/v1',
+    model:'llama-3.3-70b-versatile',
+    hint:'Groq超快推理，免费额度。官网 console.groq.com 获取密钥。',
+    models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','mixtral-8x7b-32768','gemma2-9b-it']
+  },
+  'together':{
+    url:'https://api.together.xyz/v1',
+    model:'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    hint:'Together AI，OpenAI兼容格式。官网 together.ai 获取密钥。',
+    models:['meta-llama/Llama-3.3-70B-Instruct-Turbo','Qwen/Qwen2.5-72B-Instruct-Turbo','mistralai/Mixtral-8x22B-Instruct-v0.1']
+  },
+  'mistral':{
+    url:'https://api.mistral.ai/v1',
+    model:'mistral-large-latest',
+    hint:'Mistral AI，OpenAI兼容格式。官网 console.mistral.ai 获取密钥。',
+    models:['mistral-large-latest','mistral-medium-latest','mistral-small-latest','open-mixtral-8x22b']
+  },
+  'cohere':{
+    url:'https://api.cohere.com/v2',
+    model:'command-r-plus',
+    hint:'Cohere，OpenAI兼容格式。官网 dashboard.cohere.com 获取密钥。',
+    models:['command-r-plus','command-r','command-light']
+  }
+};
+
+function selectAPIType(type){
+  const preset=API_PRESETS[type];
+  if(!preset) return;
+  
+  // 填入地址
+  if(preset.url){
+    document.getElementById('api-url').value=preset.url;
+  }
+  
+  // 填入推荐模型
+  if(preset.model){
+    document.getElementById('api-model').value=preset.model;
+  }
+  
+  // 显示提示
+  const hintEl=document.getElementById('api-type-hint');
+  if(hintEl){
+    let hint=preset.hint||'';
+    
+    // 如果有推荐模型列表，显示出来
+    if(preset.models&&preset.models.length){
+      hint+='\n\n推荐模型：'+preset.models.join('、');
+    }
+    
+    hintEl.innerHTML=hint.replace(/\n/g,'<br>');
+  }
+  
+  // 填充模型下拉列表
+  if(preset.models&&preset.models.length){
+    const sel=document.getElementById('model-list');
+    sel.innerHTML='<option value="">-- 选择推荐模型 --</option>';
+    preset.models.forEach(m=>{
+      sel.innerHTML+=`<option value="${m}">${m}</option>`;
+    });
+    sel.style.display='block';
+  }
+  
+  // 保存选择的类型
+  A.api.type=type;
+  debouncedSaveState();
+}
+
 function toggleKeyVis(){const i=document.getElementById('api-key');i.type=i.type==='password'?'text':'password';}
 function saveAPI(){
+  A.api.type=document.getElementById('api-type').value;
   A.api.url=document.getElementById('api-url').value.trim().replace(/\/+$/,'');
   A.api.key=document.getElementById('api-key').value.trim();
   A.api.model=document.getElementById('api-model').value.trim();
@@ -3080,19 +3270,25 @@ function saveCurrentAPI(){
   const url=document.getElementById('api-url').value.trim().replace(/\/+$/,'');
   const key=document.getElementById('api-key').value.trim();
   const model=document.getElementById('api-model').value.trim();
+  const apiType=document.getElementById('api-type')?.value||'custom';
   if(!url||!key){toast('❌ 请先填写地址和密钥');return;}
   const name=prompt('给这个API配置起个名字:',model||'我的API');if(!name)return;
   if(!A.savedAPIs)A.savedAPIs=[];
-  A.savedAPIs.push({id:gid(),name:name.trim(),url,key,model});
-  A.api.url=url;A.api.key=key;A.api.model=model;
+  A.savedAPIs.push({id:gid(),name:name.trim(),url,key,model,type:apiType});
+  A.api.url=url;A.api.key=key;A.api.model=model;A.api.type=apiType;
   saveState();renderSavedAPIs();toast('✅ 已保存: '+name.trim());
 }
 function loadSavedAPI(id){
   if(!A.savedAPIs)return;const api=A.savedAPIs.find(x=>x.id===id);if(!api)return;
-  A.api.url=api.url;A.api.key=api.key;A.api.model=api.model;
+  A.api.url=api.url;A.api.key=api.key;A.api.model=api.model;A.api.type=api.type||'custom';
   document.getElementById('api-url').value=api.url;
   document.getElementById('api-key').value=api.key;
   document.getElementById('api-model').value=api.model;
+  const typeSel=document.getElementById('api-type');
+  if(typeSel){
+    typeSel.value=api.type||'custom';
+    selectAPIType(api.type||'custom');
+  }
   saveState();renderSavedAPIs();toast('✅ 已切换: '+api.name);
 }
 function deleteSavedAPI(id){if(!A.savedAPIs)return;A.savedAPIs=A.savedAPIs.filter(x=>x.id!==id);saveState();renderSavedAPIs();}
@@ -3355,6 +3551,8 @@ function updateCount(){
 
 // ===== UI恢复 =====
 function restoreUI(){
+  const apiTypeSel=document.getElementById('api-type');
+  if(apiTypeSel&&A.api.type) apiTypeSel.value=A.api.type;
   document.getElementById('api-url').value=A.api.url;
   document.getElementById('api-key').value=A.api.key;
   document.getElementById('api-model').value=A.api.model;
@@ -4716,7 +4914,7 @@ function applyCustomFont(font){
   
   const fonts={
     default:'',
-    serif:`.msg-bubble{font-family:"Noto Serif SC","Source Han Serif SC","SimSun","STSong",Georgia,serif!important;}`,
+    serif:`.msg-bubble{font-family:"Noto Serif SC","Source Han Serif SC","FangSong","STFangsong",Georgia,serif!important;}`,
     rounded:`.msg-bubble{font-family:"Rounded Mplus 1c","PingFang SC","Microsoft YaHei",sans-serif!important;letter-spacing:0.3px;}`,
     mono:`.msg-bubble{font-family:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace!important;font-size:13px!important;letter-spacing:-0.3px;}`,
     handwrite:`.msg-bubble{font-family:"ZCOOL XiaoWei","Ma Shan Zheng","STXingkai","Segoe Script",cursive!important;font-size:15px!important;line-height:2!important;}`
