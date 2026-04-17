@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>AI文字冒险引擎</title>
+<title>云歌 - 蓬门今始为君开</title>
 <style>
 :root{
   --bg-primary:#f0f2f5;--bg-secondary:#ffffff;--bg-tertiary:#e8ecf1;
@@ -218,6 +218,98 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 .network-toast.show{display:block;}
 .network-toast.online{background:var(--success);}
 
+/* ===== 云歌开场动画 ===== */
+#splash-screen{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;overflow:hidden;transition:opacity 1s ease;}
+.splash-bg{position:relative;width:100%;height:100%;background:linear-gradient(170deg,#f7f3ec 0%,#efe8da 40%,#e8dfd0 70%,#f0ebe2 100%);overflow:hidden;}
+
+/* 宣纸纹理 */
+.paper-texture{position:absolute;top:0;left:0;right:0;bottom:0;opacity:0.3;background-image:url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");}
+
+/* 墨滴 */
+.ink-drop{position:absolute;top:35%;left:50%;width:0;height:0;border-radius:50%;background:radial-gradient(circle,rgba(40,35,30,0.6) 0%,rgba(60,55,45,0.3) 40%,rgba(80,75,65,0.1) 70%,transparent 100%);transform:translate(-50%,-50%);animation:inkSpread 3s ease-out forwards;z-index:1;}
+@keyframes inkSpread{
+  0%{width:0;height:0;opacity:1;}
+  30%{width:300px;height:300px;opacity:0.6;}
+  60%{width:600px;height:500px;opacity:0.3;border-radius:45% 55% 50% 50%;}
+  100%{width:900px;height:700px;opacity:0.15;border-radius:40% 60% 55% 45%;}
+}
+
+/* 水墨山水 */
+.ink-landscape{position:absolute;bottom:0;left:0;right:0;height:55%;opacity:0;animation:landscapeReveal 2s ease-out 1.5s forwards;z-index:2;}
+@keyframes landscapeReveal{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.ink-mountain{position:absolute;bottom:0;opacity:0.7;}
+.ink-m1{left:5%;width:35%;height:80%;background:linear-gradient(180deg,transparent 0%,rgba(60,55,48,0.15) 20%,rgba(50,45,38,0.25) 50%,rgba(45,40,35,0.2) 80%,transparent 100%);clip-path:polygon(20% 100%,0% 60%,15% 35%,30% 45%,45% 15%,55% 30%,65% 10%,75% 25%,85% 20%,100% 40%,90% 100%);animation:mountainFade 2s ease-out 1.8s forwards;opacity:0;}
+.ink-m2{right:10%;width:30%;height:65%;background:linear-gradient(180deg,transparent 0%,rgba(70,65,55,0.12) 30%,rgba(55,50,42,0.2) 60%,rgba(50,45,38,0.15) 90%,transparent 100%);clip-path:polygon(10% 100%,5% 50%,20% 25%,35% 35%,50% 8%,65% 20%,80% 15%,95% 35%,100% 100%);animation:mountainFade 2s ease-out 2.1s forwards;opacity:0;}
+.ink-m3{left:30%;width:40%;height:50%;background:linear-gradient(180deg,transparent 0%,rgba(80,75,65,0.08) 40%,rgba(65,60,50,0.12) 70%,transparent 100%);clip-path:polygon(5% 100%,0% 55%,15% 30%,30% 40%,50% 12%,70% 28%,85% 18%,100% 45%,95% 100%);animation:mountainFade 2.5s ease-out 2.4s forwards;opacity:0;}
+@keyframes mountainFade{from{opacity:0;transform:translateY(10px)}to{opacity:0.7;transform:translateY(0)}}
+
+.ink-water{position:absolute;bottom:0;left:0;right:0;height:15%;background:linear-gradient(180deg,rgba(120,130,140,0.05) 0%,rgba(100,115,125,0.08) 50%,rgba(90,105,115,0.05) 100%);animation:waterRipple 4s ease-in-out infinite;}
+@keyframes waterRipple{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.02)}}
+
+.ink-boat{position:absolute;bottom:8%;left:40%;font-size:16px;opacity:0.3;animation:boatFloat 6s ease-in-out infinite,mountainFade 2s ease-out 2.8s forwards;opacity:0;}
+@keyframes boatFloat{0%,100%{transform:translate(0,0) rotate(-2deg)}50%{transform:translate(8px,-3px) rotate(2deg)}}
+
+/* 花瓣 */
+.petal{position:absolute;width:8px;height:8px;background:radial-gradient(circle,rgba(200,150,150,0.4) 0%,rgba(190,140,140,0.1) 100%);border-radius:50% 0 50% 0;animation:petalFall linear infinite;z-index:3;}
+@keyframes petalFall{
+  0%{transform:translate(0,0) rotate(0deg);opacity:0;}
+  10%{opacity:0.6;}
+  90%{opacity:0.3;}
+  100%{transform:translate(-30px,100vh) rotate(360deg);opacity:0;}
+}
+
+/* 品牌文字 */
+.splash-content{position:absolute;top:22%;left:50%;transform:translateX(-50%);text-align:center;z-index:5;}
+.splash-logo{font-size:36px;margin-bottom:12px;opacity:0;animation:fadeUp 1s ease-out 0.8s forwards;filter:drop-shadow(0 2px 8px rgba(80,70,60,0.15));}
+.splash-title{font-size:52px;font-weight:300;color:#3a3530;letter-spacing:16px;margin-bottom:8px;font-family:"STKaiti","KaiTi","STSong","SimSun",serif;}
+.char-animate{display:inline-block;opacity:0;animation:charWrite 0.8s ease-out forwards;}
+.char-animate:nth-child(1){animation-delay:1.2s;}
+.char-animate:nth-child(2){animation-delay:1.6s;}
+@keyframes charWrite{
+  0%{opacity:0;transform:translateY(10px) scale(0.8);filter:blur(4px);}
+  50%{filter:blur(1px);}
+  100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0);}
+}
+.splash-line{width:60px;height:1px;background:linear-gradient(90deg,transparent,rgba(80,70,60,0.3),transparent);margin:12px auto;opacity:0;animation:fadeUp 1s ease-out 2s forwards;}
+.splash-subtitle{font-size:15px;color:rgba(80,70,60,0.5);letter-spacing:6px;margin-bottom:12px;font-family:"STKaiti","KaiTi","STSong","SimSun",serif;opacity:0;animation:fadeUp 1s ease-out 2.3s forwards;}
+.splash-version{font-size:11px;color:rgba(80,70,60,0.25);letter-spacing:3px;opacity:0;animation:fadeUp 1s ease-out 2.6s forwards;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* 底部进入区域 */
+.splash-bottom{position:absolute;bottom:12%;left:50%;transform:translateX(-50%);text-align:center;z-index:5;opacity:0;animation:fadeUp 1s ease-out 3s forwards;}
+.enter-btn{background:transparent;border:1px solid rgba(80,70,60,0.25);color:#4a4540;padding:14px 44px;font-size:15px;letter-spacing:8px;cursor:pointer;border-radius:2px;transition:all 0.5s ease;font-family:"STKaiti","KaiTi","STSong","SimSun",serif;}
+.enter-btn:hover{background:rgba(80,70,60,0.06);border-color:rgba(80,70,60,0.4);letter-spacing:12px;box-shadow:0 4px 20px rgba(80,70,60,0.08);}
+.splash-hint{margin-top:16px;font-size:11px;color:rgba(80,70,60,0.25);letter-spacing:3px;}
+
+/* 画卷边框 */
+.scroll-border{position:absolute;top:0;bottom:0;width:24px;background:linear-gradient(180deg,rgba(160,140,110,0.15),rgba(140,120,90,0.25),rgba(160,140,110,0.15));z-index:6;transition:transform 1.2s cubic-bezier(0.4,0,0.2,1);}
+.scroll-left{left:0;border-right:1px solid rgba(140,120,90,0.2);box-shadow:inset -8px 0 12px rgba(140,120,90,0.05);}
+.scroll-right{right:0;border-left:1px solid rgba(140,120,90,0.2);box-shadow:inset 8px 0 12px rgba(140,120,90,0.05);}
+.scroll-left.roll{transform:translateX(-100%);}
+.scroll-right.roll{transform:translateX(100%);}
+
+/* 引导弹窗 */
+.guide-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(247,243,236,0.92);z-index:10001;display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;}
+.guide-overlay.show{display:flex;}
+.guide-card{background:linear-gradient(135deg,#faf6ef,#f5efe5);border:1px solid rgba(160,140,110,0.25);border-radius:12px;width:100%;max-width:420px;padding:32px 28px;text-align:center;box-shadow:0 8px 40px rgba(80,70,60,0.08);animation:guideIn 0.5s ease;}
+@keyframes guideIn{from{opacity:0;transform:scale(0.95) translateY(15px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.guide-dots{display:flex;justify-content:center;gap:8px;margin-bottom:24px;}
+.guide-dot{width:8px;height:8px;border-radius:50%;background:rgba(80,70,60,0.12);transition:all 0.3s;}
+.guide-dot.active{background:rgba(80,70,60,0.5);width:20px;border-radius:4px;}
+.guide-content{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.guide-icon{font-size:40px;margin-bottom:16px;}
+.guide-title{font-size:20px;font-weight:600;color:#3a3530;margin-bottom:12px;letter-spacing:3px;font-family:"STKaiti","KaiTi",serif;}
+.guide-text{font-size:13.5px;color:rgba(80,70,60,0.55);line-height:2;padding:0 10px;}
+.guide-actions{display:flex;gap:12px;margin-top:24px;justify-content:center;}
+.guide-btn{padding:12px 28px;border-radius:6px;font-size:14px;cursor:pointer;transition:all 0.3s;letter-spacing:2px;border:none;font-family:"STKaiti","KaiTi",sans-serif;}
+.guide-btn-prev{background:rgba(80,70,60,0.06);color:rgba(80,70,60,0.5);border:1px solid rgba(80,70,60,0.15);}
+.guide-btn-prev:hover{background:rgba(80,70,60,0.1);}
+.guide-btn-next{background:linear-gradient(135deg,#6a6055,#4a4540);color:#f0ebe2;font-weight:500;}
+.guide-btn-next:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(80,70,60,0.2);}
+.guide-skip{margin-top:16px;font-size:12px;color:rgba(80,70,60,0.25);cursor:pointer;letter-spacing:2px;transition:color 0.3s;}
+.guide-skip:hover{color:rgba(80,70,60,0.5);}
+
 /* ===== 歌单相关样式 ===== */
 .playlist-item{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;transition:all var(--transition);}
 .playlist-item:hover{border-color:var(--accent);}
@@ -380,9 +472,62 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 </head>
 <body>
 
+<!-- ===== 云歌开场动画 ===== -->
+<div id="splash-screen">
+  <div class="splash-bg">
+    <!-- 宣纸纹理 -->
+    <div class="paper-texture"></div>
+    <!-- 墨滴动画 -->
+    <div class="ink-drop" id="ink-drop"></div>
+    <!-- 水墨山水 -->
+    <div class="ink-landscape" id="ink-landscape">
+      <div class="ink-mountain ink-m1"></div>
+      <div class="ink-mountain ink-m2"></div>
+      <div class="ink-mountain ink-m3"></div>
+      <div class="ink-water"></div>
+      <div class="ink-boat">🛶</div>
+    </div>
+    <!-- 飘落的花瓣 -->
+    <div class="petals" id="petals"></div>
+    <!-- 品牌文字 -->
+    <div class="splash-content" id="splash-content">
+      <div class="splash-logo">⛰️</div>
+      <h1 class="splash-title" id="splash-title">
+        <span class="char-animate">云</span><span class="char-animate">歌</span>
+      </h1>
+      <div class="splash-line"></div>
+      <p class="splash-subtitle" id="splash-subtitle">蓬门今始为君开</p>
+      <p class="splash-version">v1.0</p>
+    </div>
+    <!-- 进入按钮 -->
+    <div class="splash-bottom" id="splash-bottom">
+      <button class="enter-btn" onclick="showWelcome(event)">
+        <span>踏 入 云 歌</span>
+      </button>
+      <div class="splash-hint">轻触墨迹，推开山门</div>
+    </div>
+    <!-- 画卷边框 -->
+    <div class="scroll-border scroll-left" id="scroll-left"></div>
+    <div class="scroll-border scroll-right" id="scroll-right"></div>
+  </div>
+</div>
+
+<!-- ===== 欢迎引导弹窗 ===== -->
+<div class="guide-overlay" id="guide-overlay">
+  <div class="guide-card">
+    <!-- 进度点 -->
+    <div class="guide-dots" id="guide-dots"></div>
+    <!-- 内容区 -->
+    <div class="guide-content" id="guide-content"></div>
+    <!-- 按钮区 -->
+    <div class="guide-actions" id="guide-actions"></div>
+    <div class="guide-skip" onclick="closeGuide()">跳过引导</div>
+  </div>
+</div>
+
 <div id="app">
 <aside id="sidebar">
-  <div class="sidebar-header"><h2>🎮 AI引擎</h2><button class="menu-btn" onclick="toggleSidebar()">✕</button></div>
+  <div class="sidebar-header"><h2>⛰️ 云歌</h2><button class="menu-btn" onclick="toggleSidebar()">✕</button></div>
   <nav class="sidebar-nav">
     <div class="nav-section">对话</div>
     <div class="nav-item active" data-page="chat" onclick="switchPage('chat')"><span class="icon">💬</span> 对话</div>
@@ -403,8 +548,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
     <div class="nav-item" onclick="importFromTavern()"><span class="icon">🔄</span> 酒馆导入</div>
     <div class="nav-item" onclick="openPasteImport()"><span class="icon">📋</span> 粘贴导入</div>
     <div class="nav-item" onclick="toggleTheme()"><span class="icon">🌓</span> 切换主题</div>
+    <div class="nav-item" onclick="resetSplash();location.reload();"><span class="icon">🎬</span> 重看开场</div>
   </nav>
-  <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;"><div style="font-size:10px;color:var(--text-muted);">AI文字冒险引擎 v5.2</div></div>
+  <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;"><div style="font-size:10px;color:var(--text-muted);">云歌 · 蓬门今始为君开 v1.0</div></div>
 </aside>
 <div id="main">
   <header id="topbar"><button class="menu-btn" onclick="toggleSidebar()">☰</button><span class="title" id="page-title">💬 对话</span>
@@ -758,6 +904,134 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 <div class="toast" id="toast"></div>
 
 <script>
+// ========================================
+// ===== 云歌开场动画与引导系统 =====
+// ========================================
+
+let _guideStep=0;
+
+const GUIDE_STEPS=[
+  {icon:'👋',title:'欢迎来到云歌',text:'这是一个沉浸式AI文字冒险引擎。\n你可以与AI角色对话、探索故事、\n体验不同的世界。'},
+  {icon:'🔌',title:'配置 API',text:'首先需要配置AI接口。\n点击侧边栏「🔌 API设置」，\n填入你的API地址和密钥。\n\n支持OpenAI、Claude等多种接口。'},
+  {icon:'🎭',title:'创建角色',text:'在「🎭 角色卡」中创建你的AI角色，\n设定TA的性格、外貌、身份。\n\n也可以导入别人分享的角色卡。'},
+  {icon:'📜',title:'设置提示词',text:'在对话页面展开「📜 提示词/绑定」面板，\n配置系统提示词和规则句。\n\n也可以使用预设模板快速开始。'},
+  {icon:'💬',title:'开始对话',text:'一切准备就绪！\n在输入框中输入你想说的话，\n按发送键开始你的冒险旅程。'},
+  {icon:'🎵',title:'音乐与外观',text:'在「🎨 外观」中可以：\n· 设置背景图和主题\n· 管理音乐歌单\n· 自定义字体\n· 每个对话都能有不同的风格'},
+  {icon:'💾',title:'数据安全',text:'你的所有数据都保存在本地浏览器中。\n建议定期在「💾 存档」中导出备份。\n\n切换设备时可以通过导入恢复数据。'},
+  {icon:'⛰️',title:'准备就绪',text:'云歌已为你敞开山门。\n\n愿你在这里写下属于自己的故事。'}
+];
+
+// 生成飘落花瓣
+function createPetals(){
+  const container=document.getElementById('petals');
+  if(!container) return;
+  for(let i=0;i<15;i++){
+    const petal=document.createElement('div');
+    petal.className='petal';
+    petal.style.left=Math.random()*100+'%';
+    petal.style.top=-10+'px';
+    petal.style.animationDuration=(8+Math.random()*12)+'s';
+    petal.style.animationDelay=(Math.random()*10)+'s';
+    petal.style.width=(5+Math.random()*6)+'px';
+    petal.style.height=(5+Math.random()*6)+'px';
+    petal.style.opacity=0.2+Math.random()*0.3;
+    container.appendChild(petal);
+  }
+}
+
+function checkSplashScreen(){
+  const shown=localStorage.getItem('yunge-splash-shown');
+  if(shown){
+    document.getElementById('splash-screen').style.display='none';
+    return;
+  }
+  document.getElementById('splash-screen').style.display='block';
+  createPetals();
+}
+
+function showWelcome(e){
+  if(e) e.stopPropagation();
+  
+  // 画卷卷起
+  const scrollL=document.getElementById('scroll-left');
+  const scrollR=document.getElementById('scroll-right');
+  if(scrollL) scrollL.classList.add('roll');
+  if(scrollR) scrollR.classList.add('roll');
+  
+  // 淡出开场画面
+  const splash=document.getElementById('splash-screen');
+  setTimeout(()=>{
+    splash.style.opacity='0';
+    setTimeout(()=>{
+      splash.style.display='none';
+      localStorage.setItem('yunge-splash-shown','1');
+      
+      // 显示引导
+      _guideStep=0;
+      document.getElementById('guide-overlay').classList.add('show');
+      renderGuideStep();
+    },1000);
+  },300);
+}
+
+function renderGuideStep(){
+  const step=GUIDE_STEPS[_guideStep];
+  const total=GUIDE_STEPS.length;
+  
+  const dotsEl=document.getElementById('guide-dots');
+  dotsEl.innerHTML='';
+  for(let i=0;i<total;i++){
+    dotsEl.innerHTML+=`<div class="guide-dot ${i===_guideStep?'active':''}"></div>`;
+  }
+  
+  const contentEl=document.getElementById('guide-content');
+  contentEl.innerHTML=`
+    <div class="guide-icon">${step.icon}</div>
+    <div class="guide-title">${step.title}</div>
+    <div class="guide-text">${step.text.replace(/\n/g,'<br>')}</div>
+  `;
+  contentEl.style.animation='none';
+  contentEl.offsetHeight;
+  contentEl.style.animation='guideIn 0.4s ease';
+  
+  const actionsEl=document.getElementById('guide-actions');
+  if(_guideStep===0){
+    actionsEl.innerHTML=`<button class="guide-btn guide-btn-next" onclick="nextGuideStep()">开始引导</button>`;
+  }else if(_guideStep===total-1){
+    actionsEl.innerHTML=`
+      <button class="guide-btn guide-btn-prev" onclick="prevGuideStep()">上一步</button>
+      <button class="guide-btn guide-btn-next" onclick="closeGuide()">开始使用</button>`;
+  }else{
+    actionsEl.innerHTML=`
+      <button class="guide-btn guide-btn-prev" onclick="prevGuideStep()">上一步</button>
+      <button class="guide-btn guide-btn-next" onclick="nextGuideStep()">下一步</button>`;
+  }
+}
+
+function nextGuideStep(){
+  if(_guideStep<GUIDE_STEPS.length-1){_guideStep++;renderGuideStep();}
+}
+
+function prevGuideStep(){
+  if(_guideStep>0){_guideStep--;renderGuideStep();}
+}
+
+function closeGuide(){
+  const overlay=document.getElementById('guide-overlay');
+  overlay.style.transition='opacity 0.5s ease';
+  overlay.style.opacity='0';
+  setTimeout(()=>{
+    overlay.classList.remove('show');
+    overlay.style.opacity='';
+    overlay.style.transition='';
+  },500);
+}
+
+function resetSplash(){
+  localStorage.removeItem('yunge-splash-shown');
+  toast('✅ 下次打开页面将重新显示开场动画');
+}
+
 // ========================================
 // ===== 工具函数 =====
 // ========================================
@@ -3096,6 +3370,7 @@ function restoreUI(){
 
 // ===== 初始化 =====
 async function initApp(){
+  checkSplashScreen();
   restoreBeautify();
   await loadStateChunked();
   PluginManager.load();
