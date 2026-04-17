@@ -218,6 +218,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 .network-toast.show{display:block;}
 .network-toast.online{background:var(--success);}
 
+/* ===== 对话分组样式 ===== */
+.chat-group{margin-bottom:2px;}
+.chat-group-header{display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;font-size:12px;color:var(--text-muted);transition:all var(--transition);border-radius:var(--radius-sm);user-select:none;margin:2px 4px;}
+.chat-group-header:hover{background:var(--accent-dim);color:var(--text-primary);}
+.chat-group-header .group-arrow{font-size:9px;transition:transform .3s;width:14px;text-align:center;}
+.chat-group-header .group-arrow.open{transform:rotate(90deg);}
+.chat-group-header .group-name{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chat-group-header .group-count{font-size:10px;background:var(--bg-input);padding:1px 6px;border-radius:8px;color:var(--text-muted);}
+.chat-group-header .group-actions{display:none;gap:2px;}
+.chat-group-header:hover .group-actions{display:flex;}
+.chat-group-header .group-actions button{background:none;border:none;font-size:11px;cursor:pointer;color:var(--text-muted);padding:1px 3px;border-radius:3px;}
+.chat-group-header .group-actions button:hover{background:var(--border);color:var(--text-primary);}
+.chat-group-body{padding-left:8px;border-left:2px solid var(--border);margin-left:14px;overflow:hidden;transition:max-height .3s ease;}
+.chat-group-body.collapsed{max-height:0!important;overflow:hidden;}
+.chat-ungrouped{padding:0 4px;}
+.chat-list-item .chat-drag{cursor:grab;font-size:10px;color:var(--text-muted);padding:2px;opacity:0;}
+.chat-list-item:hover .chat-drag{opacity:0.6;}
+.chat-list-item.drag-over{border-top:2px solid var(--accent);}
+
 /* ===== 云歌开场动画 ===== */
 #splash-screen{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;overflow:hidden;transition:opacity 1s ease;}
 .splash-bg{position:relative;width:100%;height:100%;background:linear-gradient(170deg,#f7f3ec 0%,#efe8da 40%,#e8dfd0 70%,#f0ebe2 100%);overflow:hidden;}
@@ -531,8 +550,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
   <nav class="sidebar-nav">
     <div class="nav-section">对话</div>
     <div class="nav-item active" data-page="chat" onclick="switchPage('chat')"><span class="icon">💬</span> 对话</div>
+<div style="padding:4px 10px;display:flex;gap:4px;align-items:center;">
+      <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="createChat()">＋ 新建</button>
+      <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="importSingleChat()">📥 导入</button>
+      <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="createChatGroup()" title="新建分组">📁</button>
+      <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="toggleAllGroups()" title="展开/收起全部" id="toggle-all-groups-btn">📂</button>
+    </div>
+    <div style="padding:2px 10px;">
+      <input type="text" id="chat-search" placeholder="🔎 搜索对话..." oninput="filterChatList(this.value)" style="width:100%;padding:5px 10px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);outline:none;"/>
+    </div>
     <div class="chat-list" id="chat-list"></div>
-    <div style="padding:4px 10px;display:flex;gap:4px;"><button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="createChat()">＋ 新建</button><button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="importSingleChat()">📥 导入</button></div>
     <div class="nav-section">构建</div>
     <div class="nav-item" data-page="characters" onclick="switchPage('characters')"><span class="icon">🎭</span> 角色卡</div>
     <div class="nav-item" data-page="persona" onclick="switchPage('persona')"><span class="icon">🎪</span> 人设面具</div>
@@ -546,6 +573,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
     <div class="nav-item" data-page="saves" onclick="switchPage('saves')"><span class="icon">💾</span> 存档</div>
     <div class="nav-item" data-page="plugins" onclick="switchPage('plugins')"><span class="icon">🔌</span> 插件</div>
     <div class="nav-item" onclick="importFromTavern()"><span class="icon">🔄</span> 酒馆导入</div>
+        <div class="nav-item" data-page="guide" onclick="switchPage('guide')"><span class="icon">📚</span> 使用指南</div>
     <div class="nav-item" onclick="openPasteImport()"><span class="icon">📋</span> 粘贴导入</div>
     <div class="nav-item" onclick="toggleTheme()"><span class="icon">🌓</span> 切换主题</div>
     <div class="nav-item" onclick="resetSplash();location.reload();"><span class="icon">🎬</span> 重看开场</div>
@@ -710,6 +738,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
         <div class="btn-group"><button class="btn btn-primary" onclick="testConn()">🔍测试</button><button class="btn btn-success" onclick="saveAPI()">💾保存</button></div>
         <div id="api-test-result" style="margin-top:10px;font-size:12.5px;"></div></div>
       <div class="settings-section"><h3>🎛️ 参数</h3>
+              <div class="form-group"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="p-stream" checked onchange="A.params.stream=this.checked;saveState();"> 🌊 流式输出（逐字显示）</label><div style="font-size:11px;color:var(--text-muted);">开启：AI逐字输出，体验更好 | 关闭：一次性返回完整内容</div></div>
         <div class="form-group"><label>Temperature(0-2)</label><div class="slider-group"><input type="range" id="p-temp" min="0" max="2" step="0.05" value="0.8" oninput="uSlider(this)"><span class="slider-value">0.80</span></div></div>
         <div class="form-group"><label>Top P(0-1)</label><div class="slider-group"><input type="range" id="p-topp" min="0" max="1" step="0.05" value="0.95" oninput="uSlider(this)"><span class="slider-value">0.95</span></div></div>
         <div class="form-group"><label>最大回复(0=不限)</label><div class="slider-group"><input type="range" id="p-maxt" min="0" max="8192" step="64" value="0" oninput="uSlider(this)"><span class="slider-value">不限制</span></div></div>
@@ -901,6 +930,61 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
         </div>
       </div>
     </div></div></div>
+        <div class="page" id="page-guide"><div class="settings-page">
+      <div class="settings-section"><h3>📚 快速开始</h3>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:2;">
+          <div style="padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);margin-bottom:10px;border-left:3px solid var(--accent);">
+            <b style="color:var(--accent);">第1步：配置API</b><br>
+            点击侧边栏「🔌 API设置」→ 选择API类型 → 填入地址和密钥 → 点击测试
+          </div>
+          <div style="padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);margin-bottom:10px;border-left:3px solid var(--accent);">
+            <b style="color:var(--accent);">第2步：创建或导入角色卡</b><br>
+            点击「🎭 角色卡」→ 新建单人/多人角色 → 填写角色设定<br>
+            也可以用「🔄 酒馆导入」导入现成的角色卡
+          </div>
+          <div style="padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);margin-bottom:10px;border-left:3px solid var(--accent);">
+            <b style="color:var(--accent);">第3步：配置对话</b><br>
+            在对话页面展开「📜 提示词/绑定」→ 绑定角色卡 → 选择预设模板<br>
+            也可以绑定面具（用户人设）和世界书
+          </div>
+          <div style="padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);margin-bottom:10px;border-left:3px solid var(--accent);">
+            <b style="color:var(--accent);">第4步：开始对话</b><br>
+            在输入框输入消息 → 按发送 → 等待AI回复<br>
+            可以用 ▶ 按钮生成新回复，◀ ▶ 切换不同版本
+          </div>
+        </div>
+      </div>
+      <div class="settings-section"><h3>🎵 音乐与外观</h3>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:2;">
+          <div style="padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);margin-bottom:10px;">
+            <b>🎵 音乐歌单：</b>在「🎨 外观」中添加音乐 → 创建歌单 → 绑定到对话<br>
+            <b>🖼️ 背景图：</b>每个对话可以设置不同的背景图<br>
+            <b>📝 字体：</b>可以导入在线字体，每个对话绑定不同字体<br>
+            <b>🎨 主题：</b>一键切换主题包，或自定义CSS
+          </div>
+        </div>
+      </div>
+      <div class="settings-section"><h3>💡 进阶技巧</h3>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:2;">
+          <div style="padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);margin-bottom:10px;">
+            <b>📖 世界书：</b>设置关键词触发的背景信息，AI会在合适时机自动引用<br>
+            <b>📝 自动总结：</b>开启后会自动总结早期对话，防止角色遗忘（OOC）<br>
+            <b>🔤 正则：</b>自动过滤或替换AI回复中的特定内容<br>
+            <b>🔀 分支：</b>点击消息的 🔀 按钮可以从任意节点创建分支对话<br>
+            <b>💾 存档：</b>定期导出备份，防止数据丢失
+          </div>
+        </div>
+      </div>
+      <div class="settings-section"><h3>❓ 常见问题</h3>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:2;">
+          <details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:600;color:var(--accent);">API连接失败怎么办？</summary><div style="padding:8px 12px;margin-top:4px;">1. 检查地址末尾是否有多余的 /<br>2. 检查密钥是否正确<br>3. 中转站选「OpenAI（代理/中转）」类型<br>4. 确认网络连接正常</div></details>
+          <details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:600;color:var(--accent);">AI回复被截断怎么办？</summary><div style="padding:8px 12px;margin-top:4px;">在API参数中调大「最大回复」数值，建议设为 4096 或更高。</div></details>
+          <details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:600;color:var(--accent);">怎么导入酒馆的角色卡？</summary><div style="padding:8px 12px;margin-top:4px;">点击侧边栏「🔄 酒馆导入」，选择 JSON 文件即可。支持角色卡、预设、世界书、正则等。</div></details>
+          <details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:600;color:var(--accent);">数据存在哪里？安全吗？</summary><div style="padding:8px 12px;margin-top:4px;">所有数据存在你的浏览器本地（IndexedDB），不会上传到任何服务器。建议定期在「💾 存档」中导出备份。</div></details>
+          <details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:600;color:var(--accent);">换设备后数据怎么迁移？</summary><div style="padding:8px 12px;margin-top:4px;">在旧设备：💾存档 → 📤导出全部<br>在新设备：💾存档 → 📥导入 → 选择导出的文件</div></details>
+        </div>
+      </div>
+    </div></div>
     <div class="page" id="page-saves"><div class="settings-page"><div class="settings-section"><h3>💾 存档</h3>
       <div class="btn-group" style="margin-top:0;margin-bottom:12px;"><button class="btn btn-primary" onclick="manualSave()">💾手动存档</button><button class="btn btn-secondary" onclick="exportFull()">📤导出全部</button><button class="btn btn-secondary" onclick="importFull()">📥导入</button></div>
       <div id="save-list"></div></div></div></div>
@@ -913,7 +997,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 <div class="modal-overlay" id="persona-modal"><div class="modal-box"><div class="modal-header"><h3 id="pe-title">🎪</h3><button class="modal-close" onclick="closePE()">✕</button></div><div class="modal-body" id="pe-body"></div></div></div>
 <div class="modal-overlay" id="wbe-modal"><div class="modal-box"><div class="modal-header"><h3 id="wbe-title">📝</h3><button class="modal-close" onclick="closeWBE()">✕</button></div><div class="modal-body" id="wbe-body"></div></div></div>
 <div class="modal-overlay" id="regex-modal"><div class="modal-box"><div class="modal-header"><h3 id="re-title">🔤</h3><button class="modal-close" onclick="closeRE()">✕</button></div><div class="modal-body" id="re-body"></div></div></div>
-<div id="quick-settings"><div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;"><h3 style="font-size:15px;color:var(--accent);">⚙️快捷</h3><button class="modal-close" onclick="closeQS()">✕</button></div><div style="padding:14px 18px;"><div class="form-group"><label>模型</label><input type="text" id="q-model"/></div><div class="form-group"><label>Temperature</label><div class="slider-group"><input type="range" id="q-temp" min="0" max="2" step="0.05" value="0.8" oninput="uSlider(this);sQS();"><span class="slider-value">0.80</span></div></div><div class="form-group"><label>Top P</label><div class="slider-group"><input type="range" id="q-topp" min="0" max="1" step="0.05" value="0.95" oninput="uSlider(this);sQS();"><span class="slider-value">0.95</span></div></div><div class="form-group"><label>最大回复(0=不限)</label><div class="slider-group"><input type="range" id="q-maxt" min="0" max="8192" step="64" value="0" oninput="uSlider(this);sQS();"><span class="slider-value">不限制</span></div></div></div></div>
+<div id="quick-settings"><div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;"><h3 style="font-size:15px;color:var(--accent);">⚙️快捷</h3><button class="modal-close" onclick="closeQS()">✕</button></div><div style="padding:14px 18px;"><div class="form-group"><label>模型</label><input type="text" id="q-model"/></div><div class="form-group"><label>Temperature</label><div class="slider-group"><input type="range" id="q-temp" min="0" max="2" step="0.05" value="0.8" oninput="uSlider(this);sQS();"><span class="slider-value">0.80</span></div></div><div class="form-group"><label>Top P</label><div class="slider-group"><input type="range" id="q-topp" min="0" max="1" step="0.05" value="0.95" oninput="uSlider(this);sQS();"><span class="slider-value">0.95</span></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="q-stream" checked onchange="A.params.stream=this.checked;saveState();"> 🌊 流式输出（逐字显示）</label><div style="font-size:11px;color:var(--text-muted);">关闭后AI会一次性返回完整回复</div></div>
+<div class="form-group"><label>最大回复(0=不限)</label><div class="slider-group"><input type="range" id="q-maxt" min="0" max="8192" step="64" value="0" oninput="uSlider(this);sQS();"><span class="slider-value">不限制</span></div></div></div></div>
 <div class="modal-overlay" id="pp-modal"><div class="modal-box"><div class="modal-header"><h3>🔍 Prompt预览</h3><button class="modal-close" onclick="closePP()">✕</button></div><div class="modal-body" id="pp-content" style="font-size:12.5px;line-height:1.8;white-space:pre-wrap;font-family:Consolas,monospace;color:var(--text-secondary);"></div></div></div>
 
 <!-- 新增：撤销/重做浮动按钮 -->
@@ -1196,6 +1281,7 @@ async function loadStateChunked(){
       if(config.appear)Object.assign(A.appear,config.appear);
       if(config.theme)A.theme=config.theme;
       A.savedAPIs=config.savedAPIs||[];
+      A.chatGroups=config.chatGroups||[];
       
       A.chars=await getKey('chars')||[];
       A.personas=await getKey('personas')||[];
@@ -1259,7 +1345,7 @@ const debouncedSaveState=debounce(saveState,800);
 // ========================================
 const A={
   api:{type:'openai',url:'',key:'',model:'gpt-4o',sessionOnly:false},
-  params:{temperature:.8,top_p:.95,max_tokens:0,frequency_penalty:0,presence_penalty:0},
+  params:{temperature:.8,top_p:.95,max_tokens:0,stream:true,frequency_penalty:0,presence_penalty:0},
   appear:{bgImage:'',bubbleOpacity:.85,userBubbleColor:'#5b8def',aiBubbleColor:'#ffffff',userTextColor:'#ffffff',aiTextColor:'#1a1a2e',fontSize:14,musicLibrary:[],playlists:[]},
   chars:[],personas:[],worldbooks:[],regexRules:[],presets:[],saves:[],savedAPIs:[],
   chats:[],activeChatId:null,isGen:false,ctrl:null,theme:'light',
@@ -2309,20 +2395,260 @@ function switchChat(id){if(A.isGen){toast('⚠️');return;}A.activeChatId=id;re
 function getChat(){return A.chats.find(c=>c.id===A.activeChatId);}
 function renameChat(id){const c=A.chats.find(x=>x.id===id);if(!c)return;const n=prompt('名称:',c.name);if(n&&n.trim()){c.name=n.trim();renderChatList();if(id===A.activeChatId)document.getElementById('page-title').textContent='💬 '+c.name;saveState();}}
 function deleteChat(id){if(A.chats.length<=1)return;if(!confirm('删除？'))return;A.chats=A.chats.filter(c=>c.id!==id);if(A.activeChatId===id){A.activeChatId=A.chats[0].id;loadChat();}renderChatList();saveState();}
+// ========================================
+// ===== 对话分组系统 =====
+// ========================================
+
+function createChatGroup(){
+  const name=prompt('分组名称:','新分组');
+  if(!name)return;
+  if(!A.chatGroups) A.chatGroups=[];
+  A.chatGroups.push({id:gid(),name:name.trim(),chatIds:[]});
+  saveState();renderChatList();
+  toast('✅ 分组已创建: '+name.trim());
+}
+
+function renameGroup(gid_){
+  if(!A.chatGroups)return;
+  const g=A.chatGroups.find(x=>x.id===gid_);
+  if(!g)return;
+  const name=prompt('分组名称:',g.name);
+  if(name&&name.trim()){g.name=name.trim();saveState();renderChatList();}
+}
+
+function deleteGroup(gid_){
+  if(!A.chatGroups)return;
+  if(!confirm('解散此分组？（对话不会被删除）'))return;
+  A.chatGroups=A.chatGroups.filter(x=>x.id!==gid_);
+  saveState();renderChatList();
+  toast('✅ 分组已解散');
+}
+
+function toggleGroup(gid_){
+  if(!A._groupCollapsed) A._groupCollapsed={};
+  const wasCollapsed=A._groupCollapsed[gid_]!==false;
+  A._groupCollapsed[gid_]=!wasCollapsed;
+  
+  const body=document.getElementById('group-body-'+gid_);
+  if(!body)return;
+  
+  if(wasCollapsed){
+    // 展开
+    body.classList.remove('collapsed');
+    body.style.maxHeight=body.scrollHeight+'px';
+    const arrow=body.previousElementSibling?.querySelector('.group-arrow');
+    if(arrow)arrow.classList.add('open');
+  }else{
+    // 收起
+    body.style.maxHeight=body.scrollHeight+'px';
+    requestAnimationFrame(()=>{body.classList.add('collapsed');body.style.maxHeight='0';});
+    const arrow=body.previousElementSibling?.querySelector('.group-arrow');
+    if(arrow)arrow.classList.remove('open');
+  }
+}
+
+function toggleAllGroups(){
+  if(!A.chatGroups||!A.chatGroups.length)return;
+  if(!A._groupCollapsed) A._groupCollapsed={};
+  
+  // 检查是否全部展开
+  const allOpen=A.chatGroups.every(g=>A._groupCollapsed[g.id]===false);
+  
+  A.chatGroups.forEach(g=>{
+    A._groupCollapsed[g.id]=allOpen?true:false;
+  });
+  
+  renderChatList();
+  toast(allOpen?'📁 全部收起':'📂 全部展开');
+}
+
+function moveChatToGroup(chatId,targetGroupId){
+  if(!A.chatGroups) A.chatGroups=[];
+  
+  // 先从所有分组中移除
+  A.chatGroups.forEach(g=>{
+    g.chatIds=g.chatIds.filter(id=>id!==chatId);
+  });
+  
+  // 加入目标分组
+  if(targetGroupId){
+    const g=A.chatGroups.find(x=>x.id===targetGroupId);
+    if(g&&!g.chatIds.includes(chatId)){
+      g.chatIds.push(chatId);
+    }
+  }
+  
+  saveState();renderChatList();
+}
+
+function moveToGroupUI(chatId){
+  if(!A.chatGroups) A.chatGroups=[];
+  
+  if(!A.chatGroups.length){
+    if(confirm('还没有分组，要创建一个吗？')){
+      createChatGroup();
+      setTimeout(()=>moveToGroupUI(chatId),100);
+    }
+    return;
+  }
+  
+  let options=['— 不归入任何分组 —'];
+  A.chatGroups.forEach(g=>options.push(g.name));
+  
+  const choice=prompt('选择分组（输入序号）：\n'+options.map((o,i)=>i+'. '+o).join('\n'),'');
+  if(choice===null)return;
+  
+  const idx=parseInt(choice);
+  if(idx===0){
+    // 移出所有分组
+    A.chatGroups.forEach(g=>{g.chatIds=g.chatIds.filter(id=>id!==chatId);});
+  }else if(idx>0&&idx<=A.chatGroups.length){
+    moveChatToGroup(chatId,A.chatGroups[idx-1].id);
+    toast('✅ 已移入: '+A.chatGroups[idx-1].name);
+    saveState();renderChatList();
+    return;
+  }
+  
+  saveState();renderChatList();
+}
+
+// 自动将分支对话归入父对话所在的组
+function autoGroupBranches(){
+  if(!A.chatGroups) A.chatGroups=[];
+  
+  A.chats.forEach(c=>{
+    if(!c.parentChatId) return;
+    
+    // 检查是否已在某个分组中
+    const alreadyGrouped=A.chatGroups.some(g=>g.chatIds.includes(c.id));
+    if(alreadyGrouped) return;
+    
+    // 找父对话所在的分组
+    let parentGroup=A.chatGroups.find(g=>g.chatIds.includes(c.parentChatId));
+    
+    if(!parentGroup){
+      // 父对话也没有分组，创建一个自动分组
+      const parent=A.chats.find(x=>x.id===c.parentChatId);
+      if(!parent) return;
+      
+      // 用父对话的名字（去掉分支后缀）作为分组名
+      const groupName=parent.name.replace(/\s*🔀分支[\d\-]+/g,'').trim();
+      
+      parentGroup={id:gid(),name:groupName,chatIds:[c.parentChatId]};
+      A.chatGroups.push(parentGroup);
+    }
+    
+    // 把分支对话加入分组
+    if(!parentGroup.chatIds.includes(c.id)){
+      parentGroup.chatIds.push(c.id);
+    }
+  });
+}
+
+function filterChatList(keyword){
+  renderChatList();
+}
 function renderChatList(){
   const el=document.getElementById('chat-list');el.innerHTML='';
-  A.chats.forEach(c=>{
-    const d=document.createElement('div');
-    d.className='chat-list-item'+(c.id===A.activeChatId?' active':'');
-    d.innerHTML=`<span class="icon">💬</span>
-      <span class="chat-name" onclick="switchChat('${c.id}')">${esc(c.name)}${c.messages.length?' · '+c.messages.length+'条':''}</span>
-      <span class="chat-actions">
-        <button onclick="event.stopPropagation();exportSingleChat('${c.id}')" title="导出此对话">📤</button>
-        <button onclick="event.stopPropagation();renameChat('${c.id}')">✏️</button>
-        <button onclick="event.stopPropagation();deleteChat('${c.id}')">🗑️</button>
-      </span>`;
-    el.appendChild(d);
+  
+  // 初始化分组数据
+  if(!A.chatGroups) A.chatGroups=[];
+  if(!A._groupCollapsed) A._groupCollapsed={};
+  
+  const searchVal=(document.getElementById('chat-search')?.value||'').trim().toLowerCase();
+  
+  // 收集已分组的对话ID
+  const groupedIds=new Set();
+  A.chatGroups.forEach(g=>{
+    if(g.chatIds) g.chatIds.forEach(id=>groupedIds.add(id));
   });
+  
+  // 自动将分支对话归入父对话的组
+  autoGroupBranches();
+  
+  // 重新收集
+  groupedIds.clear();
+  A.chatGroups.forEach(g=>{
+    if(g.chatIds) g.chatIds.forEach(id=>groupedIds.add(id));
+  });
+  
+  // 渲染分组
+  A.chatGroups.forEach(group=>{
+    const chats=group.chatIds.map(id=>A.chats.find(c=>c.id===id)).filter(x=>x);
+    
+    // 搜索过滤
+    const filteredChats=searchVal?chats.filter(c=>c.name.toLowerCase().includes(searchVal)):chats;
+    if(searchVal&&!filteredChats.length) return;
+    
+    const isCollapsed=A._groupCollapsed[group.id]!==false;
+    const hasActive=chats.some(c=>c.id===A.activeChatId);
+    
+    const groupDiv=document.createElement('div');
+    groupDiv.className='chat-group';
+    groupDiv.innerHTML=`
+      <div class="chat-group-header" onclick="toggleGroup('${group.id}')">
+        <span class="group-arrow ${isCollapsed?'':'open'}">▶</span>
+        <span class="group-name">${hasActive?'💬 ':'📁 '}${esc(group.name)}</span>
+        <span class="group-count">${chats.length}</span>
+        <span class="group-actions">
+          <button onclick="event.stopPropagation();renameGroup('${group.id}')" title="重命名">✏️</button>
+          <button onclick="event.stopPropagation();deleteGroup('${group.id}')" title="解散分组">🗑️</button>
+        </span>
+      </div>`;
+    
+    const bodyDiv=document.createElement('div');
+    bodyDiv.className='chat-group-body'+(isCollapsed?' collapsed':'');
+    bodyDiv.id='group-body-'+group.id;
+    if(!isCollapsed) bodyDiv.style.maxHeight=filteredChats.length*50+'px';
+    
+    filteredChats.forEach(c=>{
+      bodyDiv.appendChild(createChatListItem(c,group.id));
+    });
+    
+    groupDiv.appendChild(bodyDiv);
+    el.appendChild(groupDiv);
+  });
+  
+  // 渲染未分组的对话
+  const ungroupedChats=A.chats.filter(c=>!groupedIds.has(c.id));
+  const filteredUngrouped=searchVal?ungroupedChats.filter(c=>c.name.toLowerCase().includes(searchVal)):ungroupedChats;
+  
+  if(filteredUngrouped.length){
+    const ungroupedDiv=document.createElement('div');
+    ungroupedDiv.className='chat-ungrouped';
+    filteredUngrouped.forEach(c=>{
+      ungroupedDiv.appendChild(createChatListItem(c,null));
+    });
+    el.appendChild(ungroupedDiv);
+  }
+}
+
+function createChatListItem(c,groupId){
+  const d=document.createElement('div');
+  d.className='chat-list-item'+(c.id===A.activeChatId?' active':'');
+  d.draggable=true;
+  d.dataset.chatId=c.id;
+  
+  // 拖拽事件
+  d.ondragstart=e=>{e.dataTransfer.setData('text/plain',c.id);e.dataTransfer.effectAllowed='move';d.style.opacity='0.5';};
+  d.ondragend=()=>{d.style.opacity='1';document.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));};
+  d.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';d.classList.add('drag-over');};
+  d.ondragleave=()=>{d.classList.remove('drag-over');};
+  d.ondrop=e=>{e.preventDefault();d.classList.remove('drag-over');const dragId=e.dataTransfer.getData('text/plain');if(dragId!==c.id)moveChatToGroup(dragId,groupId);};
+  
+  const isBranch=c.name.includes('🔀');
+  const icon=isBranch?'🔀':'💬';
+  const msgCount=c.messages.length?(' · '+c.messages.length+'条'):'';
+  
+  d.innerHTML=`<span class="icon" style="font-size:12px;">${icon}</span>
+    <span class="chat-name" onclick="switchChat('${c.id}')">${esc(c.name)}${msgCount}</span>
+    <span class="chat-actions">
+      <button onclick="event.stopPropagation();moveToGroupUI('${c.id}')" title="移入分组">📁</button>
+      <button onclick="event.stopPropagation();exportSingleChat('${c.id}')" title="导出">📤</button>
+      <button onclick="event.stopPropagation();renameChat('${c.id}')">✏️</button>
+      <button onclick="event.stopPropagation();deleteChat('${c.id}')">🗑️</button>
+    </span>`;
+  return d;
 }
 
 function importSingleChat(){
@@ -2600,7 +2926,7 @@ async function swipeNew(msgIdx){
   try{
     const msgs=buildMsgs(null,msgIdx);
     const ctrl=new AbortController();A.ctrl=ctrl;
-    const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:true};
+        const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:A.params.stream!==false};
     body.max_tokens=A.params.max_tokens>0?A.params.max_tokens:28384;
     const r=await fetchWithRetry(A.api.url+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+A.api.key},body:JSON.stringify(body),signal:ctrl.signal},1,120000);
     let full='';const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
@@ -2819,26 +3145,37 @@ async function sendMessage(){
   A.isGen=true;togGen(true);WBCache.invalidate();
   try{
     const msgs=buildMsgs(null);const ctrl=new AbortController();A.ctrl=ctrl;
-    const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:true};
+        const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:A.params.stream!==false};
     body.max_tokens=A.params.max_tokens>0?A.params.max_tokens:28384;
     // 【改动】使用 fetchWithRetry
-    const r=await fetchWithRetry(A.api.url+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+A.api.key},body:JSON.stringify(body),signal:ctrl.signal},1,120000);
+        const r=await fetchWithRetry(A.api.url+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+A.api.key},body:JSON.stringify(body),signal:ctrl.signal},1,120000);
     const aiIdx=chat.messages.length;
-    const aiD=addMsgUI('ai','',{streaming:true,msgIdx:aiIdx});
-    A._displayedCount=Math.min(A._displayedCount+1,chat.messages.length+1);
-    const bub=aiD.querySelector('.msg-bubble');
-    let full='';const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
-try{
-while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';
-for(const line of lines){const t=line.trim();if(!t||!t.startsWith('data:'))continue;const d=t.slice(5).trim();if(d==='[DONE]')continue;
-try{const j=JSON.parse(d);const delta=j.choices?.[0]?.delta?.content;if(delta){full+=delta;bub.innerHTML=fmt(full);goBot();}}catch(e){}}}
-}catch(streamErr){if(full.trim()){console.warn('流中断',streamErr);}else{throw streamErr;}}
-full=applyRegex(full,'output');full=PluginManager.runHook('onAfterReceive',full)||full;
-    // 检测并执行音乐播放指令
-    full=handleMusicCommands(full);
-    bub.innerHTML=fmt(full);
+    let full='';
+    
+    if(A.params.stream!==false){
+      // 流式输出
+      const aiD=addMsgUI('ai','',{streaming:true,msgIdx:aiIdx});
+      A._displayedCount=Math.min(A._displayedCount+1,chat.messages.length+1);
+      const bub=aiD.querySelector('.msg-bubble');
+      const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
+      try{
+        while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';
+        for(const line of lines){const t=line.trim();if(!t||!t.startsWith('data:'))continue;const d=t.slice(5).trim();if(d==='[DONE]')continue;
+        try{const j=JSON.parse(d);const delta=j.choices?.[0]?.delta?.content;if(delta){full+=delta;bub.innerHTML=fmt(full);goBot();}}catch(e){}}}
+      }catch(streamErr){if(full.trim()){console.warn('流中断',streamErr);}else{throw streamErr;}}
+      full=applyRegex(full,'output');full=PluginManager.runHook('onAfterReceive',full)||full;
+      full=handleMusicCommands(full);
+      bub.innerHTML=fmt(full);
+      aiD.remove();
+    }else{
+      // 非流式输出（一次性返回）
+      document.getElementById('status-text').textContent='等待回复...';
+      const data=await r.json();
+      full=data.choices?.[0]?.message?.content||'';
+      full=applyRegex(full,'output');full=PluginManager.runHook('onAfterReceive',full)||full;
+      full=handleMusicCommands(full);
+    }
     chat.messages.push({role:'ai',content:full,swipes:[full],swipeIdx:0});
-    aiD.remove();
     addMsgUI('ai',full,{msgIdx:aiIdx,swipeData:chat.messages[aiIdx]});
     
     // 【改动】记录撤销（用户+AI一对消息）
@@ -3015,7 +3352,7 @@ function previewNovel(){const text=buildNovelText();const el=document.getElement
 function doExportNovel(ext){const text=buildNovelText();const title=document.getElementById('novel-title').value.trim()||'未命名';const blob=new Blob([text],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${title}.${ext}`;a.click();toast('✅');}
 
 // ===== 页面切换/主题/外观 =====
-function switchPage(p){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nav-item[data-page]').forEach(x=>x.classList.remove('active'));const pg=document.getElementById('page-'+p);const nv=document.querySelector(`.nav-item[data-page="${p}"]`);if(pg)pg.classList.add('active');if(nv)nv.classList.add('active');const ts={chat:'💬 '+(getChat()?.name||'对话'),api:'🔌 API',characters:'🎭 角色卡',persona:'🎪 面具',worldbook:'📖 世界书',preset:'⚙️ 预设',arranger:'🎼 编排器',regex:'🔤 正则',saves:'💾 存档',appearance:'🎨 外观',plugins:'🔌 插件'};document.getElementById('page-title').textContent=ts[p]||p;if(window.innerWidth<=768)document.getElementById('sidebar').classList.add('collapsed');}
+function switchPage(p){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nav-item[data-page]').forEach(x=>x.classList.remove('active'));const pg=document.getElementById('page-'+p);const nv=document.querySelector(`.nav-item[data-page="${p}"]`);if(pg)pg.classList.add('active');if(nv)nv.classList.add('active');const ts={chat:'💬 '+(getChat()?.name||'对话'),api:'🔌 API',characters:'🎭 角色卡',persona:'🎪 面具',worldbook:'📖 世界书',preset:'⚙️ 预设',arranger:'🎼 编排器',regex:'🔤 正则',saves:'💾 存档',guide:'📚 使用指南',appearance:'🎨 外观',plugins:'🔌 插件'};document.getElementById('page-title').textContent=ts[p]||p;if(window.innerWidth<=768)document.getElementById('sidebar').classList.add('collapsed');}
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 function toggleTheme(){A.theme=A.theme==='dark'?'light':'dark';applyTheme();saveState();toast(A.theme==='dark'?'🌙':'☀️');}
 function applyTheme(){document.documentElement.setAttribute('data-theme',A.theme);}
@@ -3305,7 +3642,8 @@ function renderSavedAPIs(){
 
 // ===== 滑块/快捷设置 =====
 function uSlider(s){const d=s.parentElement.querySelector('.slider-value');if(!d)return;const v=parseFloat(s.value);if(s.id==='p-maxt'||s.id==='q-maxt'||s.id==='ep-maxt')d.textContent=v===0?'不限制':v.toString();else if(s.id==='font-size')d.textContent=v+'px';else if(s.id==='chat-ctx')d.textContent=v===0?'不限制':v.toString();else if(s.id==='chat-msg-limit'){d.textContent=v===0?'全部发送':v+'条';const hint=document.getElementById('msg-limit-hint');if(hint)hint.style.display=v>0?'block':'none';}else d.textContent=Number.isInteger(v)?v.toString():v.toFixed(2);}
-function openQS(){document.getElementById('quick-settings').classList.add('open');document.getElementById('q-model').value=A.api.model;document.getElementById('q-temp').value=A.params.temperature;document.getElementById('q-topp').value=A.params.top_p;document.getElementById('q-maxt').value=A.params.max_tokens;document.querySelectorAll('#quick-settings input[type="range"]').forEach(s=>uSlider(s));}
+function openQS(){document.getElementById('quick-settings').classList.add('open');document.getElementById('q-model').value=A.api.model;  const qStreamCheck=document.getElementById('q-stream');if(qStreamCheck)qStreamCheck.checked=A.params.stream!==false;
+document.getElementById('q-temp').value=A.params.temperature;document.getElementById('q-topp').value=A.params.top_p;document.getElementById('q-maxt').value=A.params.max_tokens;document.querySelectorAll('#quick-settings input[type="range"]').forEach(s=>uSlider(s));}
 function closeQS(){document.getElementById('quick-settings').classList.remove('open');}
 function sQS(){A.api.model=document.getElementById('q-model').value.trim();A.params.temperature=parseFloat(document.getElementById('q-temp').value);A.params.top_p=parseFloat(document.getElementById('q-topp').value);A.params.max_tokens=parseInt(document.getElementById('q-maxt').value);document.getElementById('api-model').value=A.api.model;document.getElementById('p-temp').value=A.params.temperature;document.getElementById('p-topp').value=A.params.top_p;document.getElementById('p-maxt').value=A.params.max_tokens;document.querySelectorAll('#page-api input[type="range"]').forEach(s=>uSlider(s));saveState();}
 
@@ -3557,6 +3895,7 @@ function restoreUI(){
   document.getElementById('api-key').value=A.api.key;
   document.getElementById('api-model').value=A.api.model;
   document.getElementById('api-session-only').checked=A.api.sessionOnly||false;
+    const streamCheck=document.getElementById('p-stream');if(streamCheck)streamCheck.checked=A.params.stream!==false;
   document.getElementById('p-temp').value=A.params.temperature;
   document.getElementById('p-topp').value=A.params.top_p;
   document.getElementById('p-maxt').value=A.params.max_tokens;
