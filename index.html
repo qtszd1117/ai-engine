@@ -582,6 +582,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
           </div>
         </div>
         <div class="form-group">
+                <!-- 对话独立背景图 -->
+        <div class="form-group">
+          <label>🖼️ 当前对话的专属背景图</label>
+          <div style="display:flex;gap:6px;margin-bottom:6px;">
+            <input type="file" id="chat-bg-upload" accept="image/*" onchange="uploadChatBg(event)" style="font-size:12px;flex:1;"/>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0">
+              <input type="text" id="chat-bg-url" placeholder="或填入背景图URL"/>
+            </div>
+            <button class="btn btn-primary" onclick="applyChatBgUrl()" style="font-size:11px;">应用</button>
+            <button class="btn btn-secondary" onclick="clearChatBg()" style="font-size:11px;">清除</button>
+            <button class="btn btn-secondary" onclick="useGlobalBg()" style="font-size:11px;">用全局</button>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+            每个对话可以有不同的背景图。清除后会使用全局背景。
+          </div>
+          <div id="chat-bg-preview" style="display:none;margin-top:6px;width:100%;height:60px;border-radius:var(--radius-sm);background-size:cover;background-position:center;border:1px solid var(--border);"></div>
+        </div>
           <label>当前对话绑定的歌单</label>
           <select id="chat-playlist-sel" onchange="bindChatPlaylist(this.value)">
             <option value="">— 不绑定 —</option>
@@ -631,7 +650,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
             <option value="rounded">圆体</option>
             <option value="mono">等宽字体</option>
             <option value="handwrite">手写风格</option>
+            <option value="online">🌐 在线导入字体</option>
           </select>
+        </div>
+                <div class="form-group">
+          <label>📝 字体库</label>
+          <div id="font-library" style="margin-bottom:8px;"></div>
+          <div class="btn-group" style="margin-top:0;">
+            <button class="btn btn-primary" onclick="addFontToLibrary()">＋ 添加字体</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>当前对话绑定的字体</label>
+          <select id="chat-font-sel" onchange="bindChatFont(this.value)">
+            <option value="">— 使用全局字体 —</option>
+          </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">每个对话可以绑定不同的字体风格</div>
         </div>
         <div class="form-group">
           <label>界面动画</label>
@@ -1670,20 +1704,7 @@ function executeImport(){
   renderAll();saveState();A._importData=null;closeRE();
   toast(`✅ 已导入: ${imported.join('、')}`);
 }
-function renderAll(){
-  try{renderChatList();}catch(e){console.error('renderChatList错误',e);}
-  try{loadChat();}catch(e){console.error('loadChat错误',e);}
-  try{renderChars();}catch(e){console.error('renderChars错误',e);}
-  try{renderPersonas();}catch(e){console.error('renderPersonas错误',e);}
-  try{renderWBList();}catch(e){console.error('renderWBList错误',e);document.getElementById('wb-list').innerHTML='<p style="color:red;font-size:12px;">❌ 世界书渲染错误: '+e.message+'</p>';}
-  try{renderPresets();}catch(e){console.error('renderPresets错误',e);}
-  try{renderArranger();}catch(e){console.error('renderArranger错误',e);}
-    try{renderRegex();}catch(e){console.error('renderRegex错误',e);document.getElementById('regex-list').innerHTML='<p style="color:red;font-size:12px;">❌ 正则渲染错误: '+e.message+'</p>';}
-  try{renderSaves();}catch(e){console.error('renderSaves错误',e);}
-  try{renderSavedAPIs();}catch(e){console.error('renderSavedAPIs错误',e);}
-  try{renderPlugins();}catch(e){console.error('renderPlugins错误',e);}
-  try{renderPlaylistManager();}catch(e){console.error('renderPlaylistManager错误',e);}
-}
+function renderAll(){renderChatList();loadChat();renderChars();renderPersonas();renderWBList();renderPresets();renderArranger();renderRegex();renderSaves();renderSavedAPIs();renderPlugins();renderPlaylistManager();renderFontLibrary();}
 function fixChats(){A.chats.forEach(c=>{if(!c.wbIds)c.wbIds=[];if(c.authorNote===undefined)c.authorNote='';if(c.anDepth===undefined)c.anDepth=4;if(c.ctxLimit===undefined)c.ctxLimit=0;if(!c.arrangement)c.arrangement=[];if(c.playlistId===undefined)c.playlistId=null;if(c.playMode===undefined)c.playMode='sequential';});}
 
 // ===== 搜索 =====
@@ -2178,6 +2199,17 @@ function loadChat(){
   updateLoadMoreBar();
   updateCount();
   goBot();
+    // 加载对话绑定的字体
+  applyChatFont(c);
+  updateFontSelect();
+    // 加载对话专属背景图
+  applyChatBgToUI(c);
+  // 恢复背景图URL输入框
+  const chatBgUrl=document.getElementById('chat-bg-url');
+  if(chatBgUrl){
+    chatBgUrl.value=(c.chatBgImage&&c.chatBgImage!=='__global__'&&!c.chatBgImage.startsWith('data:'))?c.chatBgImage:'';
+  }
+
     // 自动播放绑定的歌单
 if(c.playlistId){
   const pl=getPlaylists().find(x=>x.id===c.playlistId);
@@ -4405,7 +4437,7 @@ function applyCustomFont(font){
     styleEl=document.createElement('style');
     styleEl.id='custom-font-css';
     document.head.appendChild(styleEl);
-  }
+    }
   
   const fonts={
     default:'',
@@ -4419,6 +4451,404 @@ function applyCustomFont(font){
   A.appear.customFont=font;
   saveState();
   toast('✅ 字体已更新');
+}
+
+// ========================================
+// ===== 字体库管理系统 =====
+// ========================================
+
+function getFontLibrary(){
+  if(!A.appear.fontLibrary) A.appear.fontLibrary=[];
+  return A.appear.fontLibrary;
+}
+
+// 添加字体到库
+function addFontToLibrary(){
+  document.getElementById('re-title').textContent='📝 添加字体';
+  document.getElementById('re-body').innerHTML=`
+    <div class="form-group">
+      <label>字体名称（显示用）</label>
+      <input type="text" id="fl-display-name" placeholder="例：毛笔楷书"/>
+    </div>
+    <div class="form-group">
+      <label>字体CSS链接</label>
+      <input type="text" id="fl-url" placeholder="https://fonts.loli.net/css2?family=Ma+Shan+Zheng&display=swap"/>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">从 Google Fonts 或镜像站获取</div>
+    </div>
+    <div class="form-group">
+      <label>字体英文名（CSS font-family 名称）</label>
+      <input type="text" id="fl-family" placeholder="Ma Shan Zheng"/>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">必须和CSS链接里的字体名一致</div>
+    </div>
+    <div class="form-group">
+      <label>适用风格标签</label>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'武侠')" style="font-size:10px;">🗡️武侠</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'古风')" style="font-size:10px;">🏯古风</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'文艺')" style="font-size:10px;">📖文艺</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'可爱')" style="font-size:10px;">🎀可爱</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'正式')" style="font-size:10px;">👔正式</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'手写')" style="font-size:10px;">✏️手写</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleFontTag(this,'复古')" style="font-size:10px;">📺复古</button>
+      </div>
+      <div id="fl-selected-tags" style="margin-top:6px;font-size:11px;color:var(--text-muted);">未选择标签</div>
+    </div>
+    <div class="form-group">
+      <label>快速填入推荐字体</label>
+      <select onchange="quickFillFont(this.value)" style="font-size:12px;">
+        <option value="">— 选择推荐字体 —</option>
+        <option value="Ma Shan Zheng|https://fonts.loli.net/css2?family=Ma+Shan+Zheng&display=swap|毛笔楷书|武侠,古风">🖌️ 马上正楷（毛笔楷书）</option>
+        <option value="Liu Jian Mao Cao|https://fonts.loli.net/css2?family=Liu+Jian+Mao+Cao&display=swap|草书体|武侠,古风,手写">🖌️ 刘建毛草（草书）</option>
+        <option value="Long Cang|https://fonts.loli.net/css2?family=Long+Cang&display=swap|龙藏行书|武侠,古风,手写">🖌️ 龙藏体（行书）</option>
+        <option value="Noto Serif SC|https://fonts.loli.net/css2?family=Noto+Serif+SC:wght@400;700&display=swap|思源宋体|文艺,正式">📖 思源宋体（优雅宋体）</option>
+        <option value="ZCOOL XiaoWei|https://fonts.loli.net/css2?family=ZCOOL+XiaoWei&display=swap|站酷小薇|文艺">📖 站酷小薇（文艺圆润）</option>
+        <option value="ZCOOL KuaiLe|https://fonts.loli.net/css2?family=ZCOOL+KuaiLe&display=swap|站酷快乐体|可爱">✏️ 站酷快乐体（可爱圆润）</option>
+        <option value="ZCOOL QingKe HuangYou|https://fonts.loli.net/css2?family=ZCOOL+QingKe+HuangYou&display=swap|庆科黄油体|可爱">✏️ 庆科黄油体（胖胖可爱）</option>
+      </select>
+    </div>
+    <div id="fl-preview" style="display:none;margin-top:8px;padding:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:16px;line-height:1.8;">
+      预览：风吹过江南的烟雨，剑客独行于古道之上。
+    </div>
+    <div class="btn-group" style="margin-top:6px;">
+      <button class="btn btn-primary" onclick="previewFontInModal()">👁️ 预览</button>
+      <button class="btn btn-success" onclick="saveFontToLibrary()">💾 保存到字体库</button>
+      <button class="btn btn-secondary" onclick="closeRE()">取消</button>
+    </div>`;
+  _fontTags=[];
+  document.getElementById('regex-modal').classList.add('show');
+}
+
+let _fontTags=[];
+function toggleFontTag(btn,tag){
+  const idx=_fontTags.indexOf(tag);
+  if(idx>=0){
+    _fontTags.splice(idx,1);
+    btn.style.borderColor='var(--border)';
+    btn.style.background='var(--bg-input)';
+  }else{
+    _fontTags.push(tag);
+    btn.style.borderColor='var(--accent)';
+    btn.style.background='var(--accent-dim)';
+  }
+  document.getElementById('fl-selected-tags').textContent=_fontTags.length?'已选: '+_fontTags.join(', '):'未选择标签';
+}
+
+function quickFillFont(val){
+  if(!val)return;
+  const parts=val.split('|');
+  if(parts.length>=3){
+    document.getElementById('fl-family').value=parts[0];
+    document.getElementById('fl-url').value=parts[1];
+    document.getElementById('fl-display-name').value=parts[2];
+    if(parts[3]){
+      _fontTags=parts[3].split(',');
+      document.getElementById('fl-selected-tags').textContent='已选: '+_fontTags.join(', ');
+    }
+  }
+}
+
+function previewFontInModal(){
+  const url=document.getElementById('fl-url').value.trim();
+  const family=document.getElementById('fl-family').value.trim();
+  if(!url||!family){toast('❌ 请填写链接和名称');return;}
+  
+  // 临时加载字体
+  let tempLink=document.getElementById('temp-font-link');
+  if(!tempLink){
+    tempLink=document.createElement('link');
+    tempLink.id='temp-font-link';
+    tempLink.rel='stylesheet';
+    document.head.appendChild(tempLink);
+  }
+  tempLink.href=url;
+  
+  const preview=document.getElementById('fl-preview');
+  if(preview){
+    preview.style.display='block';
+    preview.style.fontFamily='"'+family+'",sans-serif';
+  }
+  toast('⏳ 字体加载中，请等几秒...');
+}
+
+function saveFontToLibrary(){
+  const displayName=document.getElementById('fl-display-name').value.trim();
+  const url=document.getElementById('fl-url').value.trim();
+  const family=document.getElementById('fl-family').value.trim();
+  
+  if(!displayName||!url||!family){
+    toast('❌ 请填写名称、链接和字体名');
+    return;
+  }
+  
+  const font={
+    id:gid(),
+    displayName,
+    url,
+    family,
+    tags:[..._fontTags]
+  };
+  
+  getFontLibrary().push(font);
+  _fontTags=[];
+  
+  // 清理临时预览
+  const tempLink=document.getElementById('temp-font-link');
+  if(tempLink) tempLink.remove();
+  
+  saveState();
+  renderFontLibrary();
+  updateFontSelect();
+  closeRE();
+  toast('✅ 字体已添加: '+displayName);
+}
+
+function deleteFontFromLibrary(fontId){
+  if(!confirm('删除此字体？'))return;
+  const lib=getFontLibrary();
+  const idx=lib.findIndex(x=>x.id===fontId);
+  if(idx>=0) lib.splice(idx,1);
+  
+  // 清除对话中的绑定
+  A.chats.forEach(c=>{
+    if(c.fontId===fontId) c.fontId=null;
+  });
+  
+  // 如果当前全局字体是这个，清除
+  if(A.appear.activeFontId===fontId){
+    A.appear.activeFontId=null;
+    clearActiveFont();
+  }
+  
+  saveState();
+  renderFontLibrary();
+  updateFontSelect();
+  toast('✅ 已删除');
+}
+
+// 全局应用某个字体
+function applyFontFromLibrary(fontId){
+  const font=getFontLibrary().find(x=>x.id===fontId);
+  if(!font) return;
+  
+  loadFontCSS(font);
+  
+  let styleEl=document.getElementById('online-font-css');
+  if(!styleEl){
+    styleEl=document.createElement('style');
+    styleEl.id='online-font-css';
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent=`.msg-bubble{font-family:"${font.family}",sans-serif!important;}`;
+  
+  A.appear.activeFontId=fontId;
+  saveState();
+  renderFontLibrary();
+  toast('✅ 全局字体已切换: '+font.displayName);
+}
+
+function clearActiveFont(){
+  const styleEl=document.getElementById('online-font-css');
+  if(styleEl) styleEl.textContent='';
+  const linkEl=document.getElementById('online-font-link');
+  if(linkEl) linkEl.remove();
+  A.appear.activeFontId=null;
+  saveState();
+  renderFontLibrary();
+  toast('✅ 已恢复默认字体');
+}
+
+// 加载字体CSS文件
+function loadFontCSS(font){
+  let linkEl=document.getElementById('online-font-link');
+  if(!linkEl){
+    linkEl=document.createElement('link');
+    linkEl.id='online-font-link';
+    linkEl.rel='stylesheet';
+    document.head.appendChild(linkEl);
+  }
+  linkEl.href=font.url;
+}
+
+// 对话绑定字体
+function bindChatFont(fontId){
+  const chat=getChat();
+  if(!chat) return;
+  chat.fontId=fontId||null;
+  saveState();
+  
+  // 立即应用
+  applyChatFont(chat);
+  toast(fontId?'✅ 对话字体已绑定':'✅ 已恢复全局字体');
+}
+
+// 应用对话的字体（loadChat时调用）
+function applyChatFont(chat){
+  let styleEl=document.getElementById('online-font-css');
+  if(!styleEl){
+    styleEl=document.createElement('style');
+    styleEl.id='online-font-css';
+    document.head.appendChild(styleEl);
+  }
+  
+  // 优先用对话绑定的字体
+  if(chat.fontId){
+    const font=getFontLibrary().find(x=>x.id===chat.fontId);
+    if(font){
+      loadFontCSS(font);
+      styleEl.textContent=`.msg-bubble{font-family:"${font.family}",sans-serif!important;}`;
+      return;
+    }
+  }
+  
+  // 其次用全局字体
+  if(A.appear.activeFontId){
+    const font=getFontLibrary().find(x=>x.id===A.appear.activeFontId);
+    if(font){
+      loadFontCSS(font);
+      styleEl.textContent=`.msg-bubble{font-family:"${font.family}",sans-serif!important;}`;
+      return;
+    }
+  }
+  
+  // 都没有就清除
+  styleEl.textContent='';
+}
+
+// 渲染字体库
+function renderFontLibrary(){
+  const el=document.getElementById('font-library');
+  if(!el) return;
+  const lib=getFontLibrary();
+  
+  if(!lib.length){
+    el.innerHTML='<span style="font-size:12px;color:var(--text-muted);">无字体，点击添加</span>';
+    return;
+  }
+  
+  let h='';
+  lib.forEach(f=>{
+    const isGlobalActive=A.appear.activeFontId===f.id;
+    const chat=getChat();
+    const isChatBound=chat&&chat.fontId===f.id;
+    const tagsHTML=f.tags&&f.tags.length?f.tags.map(t=>`<span style="font-size:10px;padding:1px 6px;background:var(--accent-dim);color:var(--accent);border-radius:8px;">${t}</span>`).join(' '):'';
+    
+    let statusText='';
+    if(isChatBound) statusText='<span style="color:var(--success);font-size:10px;font-weight:600;">📌 当前对话</span>';
+    else if(isGlobalActive) statusText='<span style="color:var(--accent);font-size:10px;font-weight:600;">🌐 全局使用中</span>';
+    
+    h+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-input);border:1px solid ${isGlobalActive||isChatBound?'var(--accent)':'var(--border)'};border-radius:var(--radius-sm);margin-bottom:4px;font-size:12px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--text-primary);">${esc(f.displayName)} ${statusText}</div>
+        <div style="font-size:10px;color:var(--text-muted);">${esc(f.family)} ${tagsHTML}</div>
+      </div>
+      <button onclick="applyFontFromLibrary('${f.id}')" style="background:${isGlobalActive?'var(--accent)':'var(--bg-card)'};color:${isGlobalActive?'#fff':'var(--text-secondary)'};border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:10px;" title="设为全局字体">${isGlobalActive?'✅ 全局':'🌐 全局'}</button>
+      <button onclick="deleteFontFromLibrary('${f.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;" title="删除">🗑️</button>
+    </div>`;
+  });
+  el.innerHTML=h;
+}
+
+// 更新字体下拉选择
+function updateFontSelect(){
+  const sel=document.getElementById('chat-font-sel');
+  if(!sel) return;
+  const chat=getChat();
+  const lib=getFontLibrary();
+  sel.innerHTML='<option value="">— 使用全局字体 —</option>';
+  lib.forEach(f=>{
+    sel.innerHTML+=`<option value="${f.id}" ${chat?.fontId===f.id?'selected':''}>${esc(f.displayName)}</option>`;
+  });
+}
+// 对话独立背景图
+function uploadChatBg(e){
+  const f=e.target.files[0];if(!f)return;
+  const chat=getChat();if(!chat)return;
+  
+  // 如果图片太大，压缩一下
+  if(f.size>2*1024*1024){
+    // 大于2MB，用canvas压缩
+    const img=new Image();
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      img.onload=()=>{
+        const canvas=document.createElement('canvas');
+        const maxW=1920;
+        let w=img.width,h=img.height;
+        if(w>maxW){h=h*(maxW/w);w=maxW;}
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL('image/jpeg',0.7);
+        chat.chatBgImage=compressed;
+        applyChatBgToUI(chat);
+        saveState();
+        toast('✅ 背景已设置（已压缩）');
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  }else{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      chat.chatBgImage=ev.target.result;
+      applyChatBgToUI(chat);
+      saveState();
+      toast('✅ 背景已设置');
+    };
+    reader.readAsDataURL(f);
+  }
+}
+
+function applyChatBgUrl(){
+  const url=document.getElementById('chat-bg-url').value.trim();
+  if(!url){toast('❌ 请填写URL');return;}
+  const chat=getChat();if(!chat)return;
+  chat.chatBgImage=url;
+  applyChatBgToUI(chat);
+  saveState();
+  toast('✅ 背景已设置');
+}
+
+function clearChatBg(){
+  const chat=getChat();if(!chat)return;
+  chat.chatBgImage='';
+  applyChatBgToUI(chat);
+  saveState();
+  toast('✅ 已清除对话背景，将使用全局背景');
+}
+
+function useGlobalBg(){
+  const chat=getChat();if(!chat)return;
+  chat.chatBgImage='__global__';
+  applyChatBgToUI(chat);
+  saveState();
+  toast('✅ 已设为使用全局背景');
+}
+
+function applyChatBgToUI(chat){
+  const bg=document.getElementById('chat-bg');
+  const preview=document.getElementById('chat-bg-preview');
+  
+  if(chat.chatBgImage&&chat.chatBgImage!=='__global__'){
+    // 使用对话专属背景
+    bg.style.backgroundImage=`url(${chat.chatBgImage})`;
+    bg.style.opacity='1';
+    if(preview){
+      preview.style.display='block';
+      preview.style.backgroundImage=`url(${chat.chatBgImage})`;
+    }
+  }else if(chat.chatBgImage==='__global__'||!chat.chatBgImage){
+    // 使用全局背景
+    const globalBg=A.appear.bgImage;
+    if(globalBg){
+      bg.style.backgroundImage=`url(${globalBg})`;
+      bg.style.opacity='1';
+    }else{
+      bg.style.backgroundImage='none';
+      bg.style.opacity='0';
+    }
+    if(preview) preview.style.display='none';
+  }
 }
 
 function applyAnimation(anim){
@@ -4483,7 +4913,7 @@ function restoreBeautify(){
     const sel=document.getElementById('ui-animation');
     if(sel)sel.value=A.appear.uiAnimation;
   }
-  if(A.appear.customCSS){
+    if(A.appear.customCSS){
     const styleEl=document.createElement('style');
     styleEl.id='user-custom-css';
     styleEl.textContent=A.appear.customCSS;
@@ -4491,13 +4921,27 @@ function restoreBeautify(){
     const input=document.getElementById('custom-css-input');
     if(input)input.value=A.appear.customCSS;
   }
-    if(A.appear.playerStyle){
+  if(A.appear.playerStyle){
     MusicPlayer.style=A.appear.playerStyle;
     const sel=document.getElementById('player-style');
     if(sel)sel.value=A.appear.playerStyle;
   }
-  renderPlaylistManager();
-updatePlaylistSelect();
+  // 恢复字体库
+  if(A.appear.activeFontId){
+    const font=getFontLibrary().find(x=>x.id===A.appear.activeFontId);
+    if(font){
+      loadFontCSS(font);
+      let styleEl=document.getElementById('online-font-css');
+      if(!styleEl){
+        styleEl=document.createElement('style');
+        styleEl.id='online-font-css';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent=`.msg-bubble{font-family:"${font.family}",sans-serif!important;}`;
+    }
+  }
+  renderFontLibrary();
+  updateFontSelect();
 }
 
 // ========================================
