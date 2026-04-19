@@ -575,6 +575,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
     <div class="nav-item" onclick="importFromTavern()"><span class="icon">🔄</span> 酒馆导入</div>
         <div class="nav-item" data-page="guide" onclick="switchPage('guide')"><span class="icon">📚</span> 使用指南</div>
     <div class="nav-item" onclick="openPasteImport()"><span class="icon">📋</span> 粘贴导入</div>
+    <div class="nav-item" onclick="importChatboxTxt()"><span class="icon">📄</span> Chatbox导入</div>
     <div class="nav-item" onclick="toggleTheme()"><span class="icon">🌓</span> 切换主题</div>
     <div class="nav-item" onclick="resetSplash();location.reload();"><span class="icon">🎬</span> 重看开场</div>
   </nav>
@@ -1217,7 +1218,7 @@ async function saveStateChunked(){
     const store=tx.objectStore(STORE_NAME);
     
     // 分块存储
-    store.put({api:apiData,params:A.params,appear:A.appear,theme:A.theme,savedAPIs:A.savedAPIs||[]},'config');
+        store.put({api:apiData,params:A.params,appear:A.appear,theme:A.theme,savedAPIs:A.savedAPIs||[],chatGroups:A.chatGroups||[]},'config');
     store.put(A.chars,'chars');
     store.put(A.personas,'personas');
     store.put(A.worldbooks,'worldbooks');
@@ -1594,6 +1595,25 @@ const WBCache={
 function getTriggered(chat){return WBCache.getTriggered(chat);}
 
 // ========================================
+// ===== 变量系统（兼容酒馆 setvar/getvar） =====
+// ========================================
+const _chatVars={};
+
+function processVariables(text){
+  if(!text)return text;
+  // 第1步：处理 setvar（设置变量）
+  text=text.replace(/\{\{setvar::([^:}]+)::([\s\S]*?)\}\}/gi,function(match,key,value){
+    _chatVars[key.trim()]=value.trim();
+    return ''; // setvar不输出内容
+  });
+  // 第2步：处理 getvar（读取变量）
+  text=text.replace(/\{\{getvar::([^}]+)\}\}/gi,function(match,key){
+    return _chatVars[key.trim()]||'';
+  });
+  return text;
+}
+
+// ========================================
 // ===== 宏替换 =====
 // ========================================
 function applyMacros(text){
@@ -1615,7 +1635,34 @@ function importPNGChar(){
       const buf=await file.arrayBuffer();const data=parsePNG(new Uint8Array(buf));
       if(!data){toast('❌ 未找到角色卡数据');return;}
       const d=data.data||data;
-      const card={id:gid(),type:'single',name:d.name||'未命名',gender:d.gender||'',age:d.age||'',identity:d.identity||d.scenario||'',appearance:d.description||'',personality:d.personality||'',firstMessage:d.first_mes||'',examples:d.mes_example||'',notes:d.creator_notes||''};
+      const card={id:gid(),type:'single',
+        name:d.name||'未命名',
+        gender:d.gender||'',
+        age:d.age||'',
+        identity:d.scenario||'',
+        appearance:'',
+        personality:d.personality||'',
+        speaking:'',
+        backstory:'',
+        likes:'',
+        secrets:'',
+        firstMessage:d.first_mes||'',
+        examples:d.mes_example||'',
+        notes:''
+      };
+      // 把 description 放到注释里（这是角色卡的核心内容）
+      let noteParts=[];
+      if(d.description) noteParts.push(d.description);
+      if(d.creator_notes) noteParts.push('[创作者备注]\n'+d.creator_notes);
+      if(d.system_prompt) noteParts.push('[角色系统提示词]\n'+d.system_prompt);
+      if(d.post_history_instructions) noteParts.push('[历史后指令]\n'+d.post_history_instructions);
+      if(d.creator) noteParts.push('作者: '+d.creator);
+      if(d.tags&&Array.isArray(d.tags)&&d.tags.length) noteParts.push('标签: '+d.tags.join(', '));
+      if(d.alternate_greetings&&Array.isArray(d.alternate_greetings)&&d.alternate_greetings.length){
+        noteParts.push('[备选开场白]\n'+d.alternate_greetings.join('\n---\n'));
+      }
+      card.notes=noteParts.join('\n\n');
+      
       const imgR=new FileReader();
       imgR.onload=ev=>{card.avatar=ev.target.result;A.chars.push(card);saveState();renderChars();updateCharSel();toast('✅ PNG导入: '+card.name);};
       imgR.readAsDataURL(file);
@@ -1628,10 +1675,39 @@ function parsePNG(u8){
     const len=(u8[o]<<24)|(u8[o+1]<<16)|(u8[o+2]<<8)|u8[o+3];o+=4;
     const type=String.fromCharCode(u8[o],u8[o+1],u8[o+2],u8[o+3]);o+=4;
     if(type==='tEXt'||type==='iTXt'){
-      const chunk=u8.slice(o,o+len);const str=new TextDecoder('latin1').decode(chunk);const ni=str.indexOf('\0');
-      if(ni>=0&&str.substring(0,ni)==='chara'){
-        if(type==='iTXt'){const parts=new TextDecoder('utf-8').decode(chunk.slice(ni+1)).split('\0');const b64=parts[parts.length-1]||parts[parts.length-2]||'';try{return JSON.parse(atob(b64));}catch(e){try{return JSON.parse(decodeURIComponent(escape(atob(b64))));}catch(e2){}}}
-        else{const b64=str.substring(ni+1);try{return JSON.parse(atob(b64));}catch(e){try{return JSON.parse(decodeURIComponent(escape(atob(b64))));}catch(e2){}}}
+      const chunk=u8.slice(o,o+len);
+      const nullIdx=chunk.indexOf(0);
+      if(nullIdx>=0){
+        const keyword=new TextDecoder('latin1').decode(chunk.slice(0,nullIdx));
+        if(keyword==='chara'){
+          let b64='';
+          if(type==='iTXt'){
+            // iTXt: keyword\0 compression_flag\0 compression_method\0 language\0 translated\0 text
+            let pos=nullIdx+1;
+            // 跳过 compression flag, compression method
+            pos+=2;
+            // 跳过 language tag (到下一个\0)
+            while(pos<chunk.length&&chunk[pos]!==0)pos++;pos++;
+            // 跳过 translated keyword (到下一个\0)
+            while(pos<chunk.length&&chunk[pos]!==0)pos++;pos++;
+            b64=new TextDecoder('utf-8').decode(chunk.slice(pos));
+          }else{
+            b64=new TextDecoder('latin1').decode(chunk.slice(nullIdx+1));
+          }
+          b64=b64.trim();
+          try{
+            // 先尝试直接解码为UTF-8
+            const binStr=atob(b64);
+            const bytes=new Uint8Array(binStr.length);
+            for(let i=0;i<binStr.length;i++)bytes[i]=binStr.charCodeAt(i);
+            const jsonStr=new TextDecoder('utf-8').decode(bytes);
+            return JSON.parse(jsonStr);
+          }catch(e){
+            try{return JSON.parse(atob(b64));}catch(e2){
+              try{return JSON.parse(decodeURIComponent(escape(atob(b64))));}catch(e3){}
+            }
+          }
+        }
       }
     }
     o+=len+4;
@@ -2356,7 +2432,35 @@ function openWBE(wid,ei){A._wbid=wid;A._wbeid=ei;const w=A.worldbooks.find(x=>x.
   document.getElementById('wbe-title').textContent='📝 '+w.name;
   document.getElementById('wbe-body').innerHTML=`<div class="form-group"><label>名称</label><input type="text" id="wbe-name" value="${esc(e.name||'')}"/></div><div class="form-group"><label>关键词(逗号分隔)</label><input type="text" id="wbe-kw" value="${(e.keywords||[]).join(',')}"/></div><div class="form-group"><label>内容</label><textarea id="wbe-content" rows="6">${esc(e.content||'')}</textarea></div><div class="form-group"><label>位置</label><select id="wbe-pos"><option value="before_system" ${e.position==='before_system'?'selected':''}>系统前</option><option value="after_system" ${e.position==='after_system'?'selected':''}>系统后</option><option value="after_char" ${e.position==='after_char'?'selected':''}>角色后</option><option value="before_history" ${e.position==='before_history'?'selected':''}>历史前</option><option value="in_history" ${e.position==='in_history'?'selected':''}>历史中</option><option value="before_jb" ${e.position==='before_jb'?'selected':''}>规则前</option><option value="after_jb" ${e.position==='after_jb'?'selected':''}>末尾</option></select></div><div class="form-group"><label>深度</label><div class="slider-group"><input type="range" id="wbe-depth" min="1" max="20" value="${e.depth||4}" oninput="uSlider(this)"><span class="slider-value">${e.depth||4}</span></div></div><div class="form-group"><label>优先级</label><div class="slider-group"><input type="range" id="wbe-pri" min="0" max="100" value="${e.priority||0}" oninput="uSlider(this)"><span class="slider-value">${e.priority||0}</span></div></div><div class="form-group"><label><input type="checkbox" id="wbe-const" ${e.constant?'checked':''}/> 📌常驻</label></div><div class="form-group"><label><input type="checkbox" id="wbe-en" ${e.enabled?'checked':''}/> ✅启用</label></div><div class="btn-group"><button class="btn btn-success" onclick="saveWBE()">💾</button><button class="btn btn-secondary" onclick="closeWBE()">取消</button></div>`;
   document.getElementById('wbe-modal').classList.add('show');}
-function saveWBE(){const w=A.worldbooks.find(x=>x.id===A._wbid);if(!w)return;const e=w.entries[A._wbeid];e.name=document.getElementById('wbe-name').value.trim();e.keywords=document.getElementById('wbe-kw').value.split(',').map(k=>k.trim()).filter(k=>k);e.content=document.getElementById('wbe-content').value;e.position=document.getElementById('wbe-pos').value;e.depth=parseInt(document.getElementById('wbe-depth').value);e.priority=parseInt(document.getElementById('wbe-pri').value);e.constant=document.getElementById('wbe-const').checked;e.enabled=document.getElementById('wbe-en').checked;WBCache.invalidate();saveState();renderWBList();closeWBE();toast('✅');}
+function saveWBE(){
+  const w=A.worldbooks.find(x=>x.id===A._wbid);if(!w)return;
+  const e=w.entries[A._wbeid];
+  e.name=document.getElementById('wbe-name').value.trim();
+  e.keywords=document.getElementById('wbe-kw').value.split(',').map(k=>k.trim()).filter(k=>k);
+  e.content=document.getElementById('wbe-content').value;
+  e.position=document.getElementById('wbe-pos').value;
+  e.depth=parseInt(document.getElementById('wbe-depth').value);
+  e.priority=parseInt(document.getElementById('wbe-pri').value);
+  e.constant=document.getElementById('wbe-const').checked;
+  e.enabled=document.getElementById('wbe-en').checked;
+  WBCache.invalidate();
+  saveState();
+  // 记住哪些世界书是展开的
+  const openSections=[];
+  A.worldbooks.forEach((wb,idx)=>{
+    const section=document.getElementById('wb-section-'+idx);
+    if(section&&section.style.display!=='none') openSections.push(idx);
+  });
+  renderWBList();
+  // 恢复展开状态
+  openSections.forEach(idx=>{
+    const section=document.getElementById('wb-section-'+idx);
+    const arrow=document.getElementById('wb-arrow-'+idx);
+    if(section){section.style.display='block';if(arrow)arrow.style.transform='rotate(180deg)';}
+  });
+  closeWBE();
+  toast('✅');
+}
 function closeWBE(){document.getElementById('wbe-modal').classList.remove('show');}
 function toggleWBE(wid,i){
   const w=A.worldbooks.find(x=>x.id===wid);
@@ -2364,18 +2468,15 @@ function toggleWBE(wid,i){
   w.entries[i].enabled=!w.entries[i].enabled;
   WBCache.invalidate();
   saveState();
-  // 不重新渲染整个列表，只更新当前条目的显示状态
+  // 直接更新DOM，不重新渲染整个列表
   const wIdx=A.worldbooks.indexOf(w);
   const section=document.getElementById('wb-section-'+wIdx);
   if(section){
-    // 找到对应的条目DOM元素并更新
     const entryItems=section.querySelectorAll('.wb-entry');
     if(entryItems[i]){
       const entry=entryItems[i];
       const toggle=entry.querySelector('.entry-toggle');
-      if(toggle){
-        toggle.classList.toggle('on',w.entries[i].enabled);
-      }
+      if(toggle) toggle.classList.toggle('on',w.entries[i].enabled);
       entry.classList.toggle('disabled-entry',!w.entries[i].enabled);
     }
   }
@@ -2626,15 +2727,28 @@ function renderChatList(){
 function createChatListItem(c,groupId){
   const d=document.createElement('div');
   d.className='chat-list-item'+(c.id===A.activeChatId?' active':'');
-  d.draggable=true;
   d.dataset.chatId=c.id;
   
-  // 拖拽事件
-  d.ondragstart=e=>{e.dataTransfer.setData('text/plain',c.id);e.dataTransfer.effectAllowed='move';d.style.opacity='0.5';};
-  d.ondragend=()=>{d.style.opacity='1';document.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));};
-  d.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';d.classList.add('drag-over');};
-  d.ondragleave=()=>{d.classList.remove('drag-over');};
-  d.ondrop=e=>{e.preventDefault();d.classList.remove('drag-over');const dragId=e.dataTransfer.getData('text/plain');if(dragId!==c.id)moveChatToGroup(dragId,groupId);};
+  // PC端拖拽
+  if(window.innerWidth>768){
+    d.draggable=true;
+    d.ondragstart=e=>{e.dataTransfer.setData('text/plain',c.id);e.dataTransfer.effectAllowed='move';d.style.opacity='0.5';};
+    d.ondragend=()=>{d.style.opacity='1';document.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));};
+    d.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';d.classList.add('drag-over');};
+    d.ondragleave=()=>{d.classList.remove('drag-over');};
+    d.ondrop=e=>{e.preventDefault();d.classList.remove('drag-over');const dragId=e.dataTransfer.getData('text/plain');if(dragId!==c.id)moveChatToGroup(dragId,groupId);};
+  }
+  
+  // 手机端长按
+  let _longPress=null;
+  d.ontouchstart=e=>{
+    _longPress=setTimeout(()=>{
+      e.preventDefault();
+      moveToGroupUI(c.id);
+    },600);
+  };
+  d.ontouchend=()=>{if(_longPress)clearTimeout(_longPress);};
+  d.ontouchmove=()=>{if(_longPress)clearTimeout(_longPress);};
   
   const isBranch=c.name.includes('🔀');
   const icon=isBranch?'🔀':'💬';
@@ -2929,13 +3043,19 @@ async function swipeNew(msgIdx){
         const body={model:A.api.model,messages:msgs,temperature:A.params.temperature,top_p:A.params.top_p,frequency_penalty:A.params.frequency_penalty,presence_penalty:A.params.presence_penalty,stream:A.params.stream!==false};
     body.max_tokens=A.params.max_tokens>0?A.params.max_tokens:28384;
     const r=await fetchWithRetry(A.api.url+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+A.api.key},body:JSON.stringify(body),signal:ctrl.signal},1,120000);
-    let full='';const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
+    let full='';
     const bubEl=getMsgBubble(msgIdx);
-    try{
-    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';
-      for(const line of lines){const t=line.trim();if(!t||!t.startsWith('data:'))continue;const d=t.slice(5).trim();if(d==='[DONE]')continue;
-        try{const j=JSON.parse(d);const delta=j.choices?.[0]?.delta?.content;if(delta){full+=delta;if(bubEl)bubEl.innerHTML=fmt(full);goBot();}}catch(e){}}}
-    }catch(streamErr){if(full.trim()){console.warn('流中断',streamErr);}else{throw streamErr;}}
+    if(A.params.stream!==false){
+      const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
+      try{
+      while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';
+        for(const line of lines){const t=line.trim();if(!t||!t.startsWith('data:'))continue;const d=t.slice(5).trim();if(d==='[DONE]')continue;
+          try{const j=JSON.parse(d);const delta=j.choices?.[0]?.delta?.content;if(delta){full+=delta;if(bubEl)bubEl.innerHTML=fmt(full);goBot();}}catch(e){}}}
+      }catch(streamErr){if(full.trim()){console.warn('流中断',streamErr);}else{throw streamErr;}}
+    }else{
+      const data=await r.json();
+      full=data.choices?.[0]?.message?.content||'';
+    }
     full=applyRegex(full,'output');
     if(!msg.swipes)msg.swipes=[msg.content];
     msg.swipes.push(full);msg.swipeIdx=msg.swipes.length-1;msg.content=full;
@@ -2978,6 +3098,8 @@ function getMsgBubble(idx){
 
 // ===== Prompt构建 =====
 function buildMsgs(userMsg,swipeUpTo=null){
+  // 重置变量，重新从预设模块中收集
+  Object.keys(_chatVars).forEach(k=>delete _chatVars[k]);
   const chat=getChat();const msgs=[];const tr=getTriggered(chat);
   tr.before_system.forEach(e=>msgs.push({role:'system',content:applyMacros(e.content)}));
   const sys=chat?.systemPrompt||'';if(sys.trim())msgs.push({role:'system',content:applyMacros(sys.trim())});
@@ -3052,6 +3174,8 @@ function buildMsgs(userMsg,swipeUpTo=null){
     for(let i=startIdx;i<histMsgs.length;i++)msgs.push(histMsgs[i]);
   }else{histMsgs.forEach(m=>msgs.push(m));}
   if(userMsg)msgs.push({role:'user',content:userMsg});
+    // 处理所有消息中的变量
+  msgs.forEach(m=>{m.content=processVariables(m.content);});
     // 注入音乐库信息（让AI知道可以播放哪些歌和歌单）
 const _musicLib=getMusicLibrary();
 const _playlists=getPlaylists();
@@ -3177,6 +3301,7 @@ async function sendMessage(){
     }
     chat.messages.push({role:'ai',content:full,swipes:[full],swipeIdx:0});
     addMsgUI('ai',full,{msgIdx:aiIdx,swipeData:chat.messages[aiIdx]});
+
     
     // 【改动】记录撤销（用户+AI一对消息）
     UndoManager.record({type:'add',chatId:chat.id,msgIdx:userMsgIdx,count:2});
@@ -3277,9 +3402,19 @@ async function reMsg(b){
   const msg=c.messages[i];
   if(!msg){toast('❌ 找不到消息');return;}
   if(msg.role!=='ai'){toast('⚠️ 只能重新生成AI回复');return;}
-  if(!msg.swipes)msg.swipes=[msg.content];
+  
+  // 修复：确保swipes数据正确
+  if(!msg.swipes||!msg.swipes.length){
+    msg.swipes=[msg.content||''];
+    msg.swipeIdx=0;
+  }
+  
+  // 如果当前内容是报错信息，重置swipeIdx让swipeNew能正常工作
+  if(msg.content&&msg.content.startsWith('❌')){
+    // 不需要特殊处理，swipeNew会自动追加新的swipe
+  }
+  
   await swipeNew(i);
-  // 刷新完成后重新渲染当前显示，确保气泡角色正确
   loadChat();
 }
 
@@ -3920,6 +4055,206 @@ async function initApp(){
 document.addEventListener('DOMContentLoaded',()=>{initApp();});
 
 // ========================================
+// ===== Chatbox 导入（支持TXT和JSON） =====
+// ========================================
+function importChatboxTxt(){
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='.txt,.text,.json,.md,.markdown';
+  input.multiple=true;
+  input.onchange=async e=>{
+    const files=Array.from(e.target.files);
+    if(!files.length)return;
+    let totalChats=0;
+    
+    for(const file of files){
+      try{
+        const text=await file.text();
+        const fileName=file.name.replace(/\.[^.]+$/,'')||'Chatbox导入';
+        let chats=[];
+        
+        if(file.name.endsWith('.json')){
+          chats=parseChatboxJSON(text,fileName);
+        }else if(file.name.endsWith('.md')||file.name.endsWith('.markdown')){
+          const msgs=parseChatboxMd(text);
+          if(msgs.length) chats=[{name:fileName,messages:msgs}];
+        }else{
+          const msgs=parseChatboxTxt(text);
+          if(msgs.length) chats=[{name:fileName,messages:msgs}];
+        }
+        
+        chats.forEach(c=>{
+          if(!c.messages.length)return;
+          const newChat={
+            id:gid(),name:c.name,messages:c.messages,
+            systemPrompt:'',jailbreakPrompt:'',authorNote:'',
+            anDepth:4,ctxLimit:0,charId:null,personaId:null,
+            wbIds:[],arrangement:[]
+          };
+          A.chats.push(newChat);
+          A.activeChatId=newChat.id;
+          totalChats++;
+        });
+      }catch(err){
+        toast('❌ '+file.name+': '+err.message);
+      }
+    }
+    
+    if(totalChats>0){
+      renderChatList();loadChat();saveState();
+      if(window.innerWidth<=768)document.getElementById('sidebar').classList.add('collapsed');
+      toast(`✅ 已导入 ${totalChats} 个对话`);
+    }else{
+      toast('❌ 未找到可导入的对话');
+    }
+  };
+  input.click();
+}
+
+function parseChatboxTxt(text){
+  const messages=[];
+  const blocks=text.split(/[►▶]\s*/);
+  for(const block of blocks){
+    const b=block.trim();if(!b)continue;
+    let role='',content='';
+if(/^USER\s*:/i.test(b)){role='user';content=b.replace(/^USER\s*:\s*/i,'');}
+    else if(/^ASSISTANT\s*:/i.test(b)){role='ai';content=b.replace(/^ASSISTANT\s*:\s*/i,'');}
+    else if(/^SYSTEM\s*:/i.test(b)){continue;}
+    else continue;
+    content=content.replace(/^\s*\n+/,'').replace(/\n+\s*$/,'').trim();
+    if(content)messages.push({role,content});
+  }
+  return messages;
+}
+
+function parseChatboxMd(text){
+  const messages=[];
+  // Markdown格式通常是 ## User: 或 **User:** 或 ### User 等
+  // Chatbox的MD格式是用 ► 或 ## 分隔
+  const patterns=[
+    /^#{1,3}\s*(?:USER|用户)\s*:?\s*$/gim,
+    /^#{1,3}\s*(?:ASSISTANT|助手|AI)\s*:?\s*$/gim,
+    /^►\s*(?:USER|ASSISTANT)\s*:/gim
+  ];
+  
+  // 通用分割：按角色标记分割
+  const blocks=text.split(/(?=^#{1,3}\s*(?:USER|ASSISTANT|用户|助手|AI)\s*:?\s*$)|(?=►\s*(?:USER|ASSISTANT)\s*:)/gim);
+  
+  for(const block of blocks){
+    const b=block.trim();
+    if(!b)continue;
+    
+    let role='',content='';
+    
+    // 匹配各种格式的角色标记
+    if(/^(?:#{1,3}\s*)?(?:USER|用户)\s*:?\s*\n/i.test(b)||/^►\s*USER\s*:/i.test(b)){
+      role='user';
+      content=b.replace(/^(?:#{1,3}\s*)?(?:USER|用户)\s*:?\s*\n?/i,'')
+               .replace(/^►\s*USER\s*:\s*\n?/i,'');
+    }else if(/^(?:#{1,3}\s*)?(?:ASSISTANT|助手|AI)\s*:?\s*\n/i.test(b)||/^►\s*ASSISTANT\s*:/i.test(b)){
+      role='ai';
+      content=b.replace(/^(?:#{1,3}\s*)?(?:ASSISTANT|助手|AI)\s*:?\s*\n?/i,'')
+               .replace(/^►\s*ASSISTANT\s*:\s*\n?/i,'');
+    }else{
+      continue;
+    }
+    
+    content=content.trim();
+    if(content) messages.push({role,content});
+  }
+  
+  return messages;
+}
+
+function parseChatboxJSON(text,defaultName){
+  let data;
+  try{data=JSON.parse(text);}catch(e){
+    // 可能是多个JSON对象拼在一起，尝试修复
+    try{data=JSON.parse('['+text.replace(/\}\s*\{/g,'},{')+']');}
+    catch(e2){throw new Error('JSON解析失败');}
+  }
+  
+  // 统一成数组
+  const allMsgs=Array.isArray(data)?data:[data];
+  
+  // 提取所有消息
+  const messages=[];
+  allMsgs.forEach(item=>{
+    // 如果是消息对象
+    if(item.role&&item.contentParts){
+      const role=item.role==='user'?'user':(item.role==='assistant'?'ai':null);
+      if(!role)return;
+      let content='';
+      if(Array.isArray(item.contentParts)){
+        content=item.contentParts
+          .filter(p=>p.type==='text'&&p.text)
+          .map(p=>p.text)
+          .join('\n');
+      }
+      // 清理 \n 转义
+      content=content.replace(/\\n/g,'\n').trim();
+      if(content) messages.push({
+        role,content,
+        _ts:item.timestamp||0
+      });
+    }
+    // 如果是包含messages数组的对话对象
+    if(item.messages&&Array.isArray(item.messages)){
+      item.messages.forEach(m=>{
+        const role=m.role==='user'?'user':(m.role==='assistant'?'ai':null);
+        if(!role)return;
+        let content='';
+        if(m.contentParts&&Array.isArray(m.contentParts)){
+          content=m.contentParts.filter(p=>p.type==='text'&&p.text).map(p=>p.text).join('\n');
+        }else if(m.content){
+          content=m.content;
+        }
+        content=(content||'').replace(/\\n/g,'\n').trim();
+        if(content) messages.push({role,content,_ts:m.timestamp||0});
+      });
+    }
+  });
+  
+  if(!messages.length)return[];
+  
+  // 按时间排序
+  messages.sort((a,b)=>(a._ts||0)-(b._ts||0));
+  
+  // 按时间间隔分割成多个对话（超过2小时算新对话）
+  const chats=[];
+  let currentChat={name:'',messages:[]};
+  const GAP=2*60*60*1000; // 2小时
+  
+  for(let i=0;i<messages.length;i++){
+    const msg=messages[i];
+    const prevTs=i>0?messages[i-1]._ts:msg._ts;
+    
+    if(currentChat.messages.length>0&&msg._ts-prevTs>GAP){
+      // 时间间隔太大，开始新对话
+      currentChat.name=defaultName+' ('+(chats.length+1)+')';
+      chats.push(currentChat);
+      currentChat={name:'',messages:[]};
+    }
+    
+    // 清理临时字段
+    const cleanMsg={role:msg.role,content:msg.content};
+    currentChat.messages.push(cleanMsg);
+  }
+  
+  // 最后一个对话
+  if(currentChat.messages.length>0){
+    if(chats.length>0){
+      currentChat.name=defaultName+' ('+(chats.length+1)+'）';
+    }else{
+      currentChat.name=defaultName;
+    }
+    chats.push(currentChat);
+  }
+  
+  return chats;
+}
+
+// ========================================
 // ===== 粘贴导入功能 =====
 // ========================================
 
@@ -3946,22 +4281,58 @@ function closePasteImport(){
 }
 
 function analyzePaste(){
-  const raw=document.getElementById('paste-input').value.trim();
+  let raw=document.getElementById('paste-input').value.trim();
   if(!raw){toast('❌ 请粘贴内容');return;}
+  
+  // 容错处理：去掉首尾可能的多余字符
+  // 去掉BOM
+  if(raw.charCodeAt(0)===0xFEFF) raw=raw.slice(1);
+  // 去掉首尾的反引号（从代码块复制时可能带上）
+  raw=raw.replace(/^```\w*\n?/,'').replace(/\n?```$/,'');
+  // 去掉首尾空白
+  raw=raw.trim();
   
   let data;
   try{
     data=JSON.parse(raw);
   }catch(e){
-    document.getElementById('paste-result').innerHTML=`
-      <div style="color:var(--danger);padding:10px;background:rgba(255,77,79,0.1);border-radius:var(--radius-sm);font-size:13px;">
-        ❌ JSON格式错误: ${esc(e.message)}<br><br>
-        💡 常见原因：<br>
-        · 复制不完整（缺少开头的 { 或结尾的 }）<br>
-        · 多余的逗号或缺少逗号<br>
-        · 中文引号""用成了英文引号""
-      </div>`;
-    return;
+    // 尝试修复常见的JSON错误
+    try{
+        // 尝试多种修复方式
+      let fixed=raw;
+      // 修复1：去掉尾部多余逗号
+      fixed=fixed.replace(/,\s*([}\]])/g,'$1');
+            try{data=JSON.parse(fixed);}catch(e3){
+        // 修复2：更强力的换行修复
+        try{
+          fixed=raw;
+          // 逐字符扫描，只替换JSON字符串值内部的换行
+          let inStr=false,escaped=false,result2='';
+          for(let i=0;i<fixed.length;i++){
+            const ch=fixed[i];
+            if(escaped){result2+=ch;escaped=false;continue;}
+            if(ch==='\\'){result2+=ch;escaped=true;continue;}
+            if(ch==='"'){inStr=!inStr;result2+=ch;continue;}
+            if(inStr&&ch==='\n'){result2+='\\n';continue;}
+            if(inStr&&ch==='\r'){result2+='\\r';continue;}
+            result2+=ch;
+          }
+          result2=result2.replace(/,\s*([}\]])/g,'$1');
+          data=JSON.parse(result2);
+        }catch(e4){throw e;}
+      }
+    }catch(e2){
+      document.getElementById('paste-result').innerHTML=`
+        <div style="color:var(--danger);padding:10px;background:rgba(255,77,79,0.1);border-radius:var(--radius-sm);font-size:13px;">
+          ❌ JSON格式错误: ${esc(e.message)}<br><br>
+          💡 常见原因：<br>
+          · 复制不完整（缺少开头的 { 或结尾的 }）<br>
+          · 多余的逗号或缺少逗号<br>
+          · 中文引号""用成了英文引号""<br>
+          · 首尾有多余的文字或代码块标记
+        </div>`;
+      return;
+    }
   }
   
   // 自动识别类型
@@ -3986,8 +4357,9 @@ function detectType(data){
     return{type:'wb_entry',label:'📝 世界书条目',detail:`${data.name||'未命名'}`};
   }
   
-  // 角色卡：有 personality 或 first_mes 或 firstMessage
-  if(data.personality||data.first_mes||data.firstMessage||data.description){
+  // 角色卡：有角色相关字段
+  if(data.personality||data.first_mes||data.firstMessage||data.description||
+     (data.name&&(data.gender||data.age||data.identity||data.appearance||data.backstory||data.speaking))){
     if(data.characters&&Array.isArray(data.characters)){
       return{type:'char',subtype:'group',label:'👥 多人角色卡',detail:`${data.name||'未命名'} (${data.characters.length}个角色)`};
     }
@@ -5249,10 +5621,23 @@ function applyCustomFont(font){
     styleEl=document.createElement('style');
     styleEl.id='custom-font-css';
     document.head.appendChild(styleEl);
-    }
+  }
+  
+  if(font==='default'||font==='online'){
+    // 选择默认或在线导入时，清除内置字体样式，让字体库生效
+    styleEl.textContent='';
+    A.appear.customFont=font;
+    saveState();
+    if(font==='default') toast('✅ 已恢复系统默认字体');
+    return;
+  }
+  
+  // 选择内置字体时，同时清除字体库的全局设置，避免冲突
+  const onlineCss=document.getElementById('online-font-css');
+  if(onlineCss) onlineCss.textContent='';
+  A.appear.activeFontId=null;
   
   const fonts={
-    default:'',
     serif:`.msg-bubble{font-family:"Noto Serif SC","Source Han Serif SC","FangSong","STFangsong",Georgia,serif!important;}`,
     rounded:`.msg-bubble{font-family:"Rounded Mplus 1c","PingFang SC","Microsoft YaHei",sans-serif!important;letter-spacing:0.3px;}`,
     mono:`.msg-bubble{font-family:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace!important;font-size:13px!important;letter-spacing:-0.3px;}`,
@@ -5262,6 +5647,7 @@ function applyCustomFont(font){
   styleEl.textContent=fonts[font]||'';
   A.appear.customFont=font;
   saveState();
+  renderFontLibrary();
   toast('✅ 字体已更新');
 }
 
@@ -5507,22 +5893,27 @@ function applyChatFont(chat){
     const font=getFontLibrary().find(x=>x.id===chat.fontId);
     if(font){
       loadFontCSS(font);
+      // 清除自定义字体的干扰
+      const customCss=document.getElementById('custom-font-css');
+      if(customCss) customCss.textContent='';
       styleEl.textContent=`.msg-bubble{font-family:"${font.family}",sans-serif!important;}`;
       return;
     }
   }
   
-  // 其次用全局字体
+  // 其次用全局字体库字体
   if(A.appear.activeFontId){
     const font=getFontLibrary().find(x=>x.id===A.appear.activeFontId);
     if(font){
       loadFontCSS(font);
+      const customCss=document.getElementById('custom-font-css');
+      if(customCss) customCss.textContent='';
       styleEl.textContent=`.msg-bubble{font-family:"${font.family}",sans-serif!important;}`;
       return;
     }
   }
   
-  // 都没有就清除
+  // 都没有就清除字体库样式，让自定义字体或默认字体生效
   styleEl.textContent='';
 }
 
@@ -5641,6 +6032,13 @@ function applyChatBgToUI(chat){
   const bg=document.getElementById('chat-bg');
   const preview=document.getElementById('chat-bg-preview');
   
+  if(!chat){
+    bg.style.backgroundImage=A.appear.bgImage?`url(${A.appear.bgImage})`:'none';
+    bg.style.opacity=A.appear.bgImage?'1':'0';
+    if(preview) preview.style.display='none';
+    return;
+  }
+  
   if(chat.chatBgImage&&chat.chatBgImage!=='__global__'){
     // 使用对话专属背景
     bg.style.backgroundImage=`url(${chat.chatBgImage})`;
@@ -5649,8 +6047,8 @@ function applyChatBgToUI(chat){
       preview.style.display='block';
       preview.style.backgroundImage=`url(${chat.chatBgImage})`;
     }
-  }else if(chat.chatBgImage==='__global__'||!chat.chatBgImage){
-    // 使用全局背景
+  }else{
+    // 没有专属背景或设为全局 → 使用全局背景
     const globalBg=A.appear.bgImage;
     if(globalBg){
       bg.style.backgroundImage=`url(${globalBg})`;
