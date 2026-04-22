@@ -1393,6 +1393,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
           </select>
         </div>
       </div>
+      <div class="settings-section"><h3>💉 CSS预设库</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">保存多套CSS风格，为不同对话绑定不同效果。</p>
+        <div class="form-group">
+          <label>已保存的CSS预设</label>
+          <div id="css-preset-list" style="margin-bottom:8px;"></div>
+          <div class="btn-group" style="margin-top:0;">
+            <button class="btn btn-primary" onclick="saveCSSPreset()">💾 保存当前CSS为预设</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>当前对话绑定的CSS预设</label>
+          <select id="chat-css-sel" onchange="bindChatCSS(this.value)">
+            <option value="">— 使用全局CSS —</option>
+          </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">每个对话可以绑定不同的CSS风格</div>
+        </div>
+      </div>
       <div class="settings-section"><h3>💉 自定义CSS</h3>
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">注入自定义CSS样式，可以修改界面的任何元素。懂CSS的话可以随意发挥！</p>
         <div class="form-group">
@@ -2306,6 +2323,79 @@ async function exportCharPNG(id){
   
   try{
     // 1. 构建酒馆兼容的JSON数据
+    // 收集关联的世界书（合并成character_book）
+    let characterBook=null;
+    // 查找当前对话绑定的世界书，或者让用户选择
+    const allWBEntries=[];
+    A.worldbooks.forEach(wb=>{
+      if(!wb.entries||!wb.entries.length)return;
+      wb.entries.forEach(e=>{
+        allWBEntries.push({
+          keys:e.keywords||[],
+          content:e.content||'',
+          enabled:e.enabled!==false,
+          constant:e.constant||false,
+          name:e.name||'',
+          comment:e.name||'',
+          position:e.position==='before_system'?4:(e.position==='after_system'?0:(e.position==='after_char'?1:(e.position==='before_history'?2:(e.position==='before_jb'?3:(e.position==='after_jb'?5:1))))),
+          insertion_order:e.priority||0,
+          depth:e.depth||4,
+          selective:false,
+          secondary_keys:[],
+          extensions:{position:e.position||'after_char',yungeWBName:wb.name}
+        });
+      });
+    });
+
+    // 如果有世界书条目，构建character_book
+    if(allWBEntries.length>0){
+      characterBook={
+        name:(c.name||'角色')+'的世界书',
+        description:'',
+        scan_depth:2,
+        token_budget:2048,
+        recursive_scanning:false,
+        entries:{}
+      };
+      allWBEntries.forEach((e,i)=>{
+        characterBook.entries[i]={
+          uid:i,
+          key:e.keys,
+          keysecondary:e.secondary_keys,
+          content:e.content,
+          comment:e.comment,
+          constant:e.constant,
+          selective:e.selective,
+          order:e.insertion_order,
+          position:e.position,
+          disable:!e.enabled,
+          depth:e.depth,
+          displayIndex:i,
+          extensions:e.extensions
+        };
+      });
+    }
+
+    // 收集系统提示词和规则句（从当前对话获取）
+    const currentChat=getChat();
+    let sysPrompt='';
+    let jbPrompt='';
+    let authorNote='';
+    if(currentChat){
+      sysPrompt=currentChat.systemPrompt||'';
+      jbPrompt=currentChat.jailbreakPrompt||'';
+      authorNote=currentChat.authorNote||'';
+    }
+
+    // 收集自定义CSS
+    const customCSS=A.appear.customCSS||'';
+    // 收集当前对话绑定的CSS预设
+    let chatCSS='';
+    if(currentChat&&currentChat.cssPresetId){
+      const cssPreset=(A.appear.cssPresets||[]).find(x=>x.id===currentChat.cssPresetId);
+      if(cssPreset) chatCSS=cssPreset.css;
+    }
+
     const tavernData={
       spec:'chara_card_v2',
       spec_version:'2.0',
@@ -2317,13 +2407,25 @@ async function exportCharPNG(id){
         first_mes:c.firstMessage||'',
         mes_example:c.examples||'',
         creator_notes:c.notes||'',
-        system_prompt:'',
-        post_history_instructions:'',
+        system_prompt:sysPrompt,
+        post_history_instructions:jbPrompt,
         alternate_greetings:c.alternateGreetings||[],
         tags:[],
-        creator:'云歌导出',
+        creator:'云歌·织锦引擎',
         character_version:'1.0',
-        extensions:{}
+        character_book:characterBook,
+        extensions:{
+          yunge:{
+            version:'1.0',
+            engine:'织锦引擎',
+            author_note:authorNote,
+            custom_css:customCSS||chatCSS,
+            speaking:c.speaking||'',
+            backstory:c.backstory||'',
+            likes:c.likes||'',
+            secrets:c.secrets||''
+          }
+        }
       }
     };
     
@@ -2520,7 +2622,7 @@ function importPNGChar(){
         card.alternateGreetings=d.alternate_greetings;
       }
       
-      // 处理内嵌世界书
+            // 处理内嵌世界书
       if(d.character_book&&d.character_book.entries){
         try{
           const wb=convertTavernWorldbook(d.character_book, (d.name||'角色')+'的世界书');
@@ -2532,8 +2634,79 @@ function importPNGChar(){
         }
       }
       
-      const imgR=new FileReader();
-      imgR.onload=ev=>{card.avatar=ev.target.result;A.chars.push(card);saveState();renderChars();updateCharSel();renderWBList();updateWBChecks();toast('✅ PNG导入: '+card.name);};
+      // 处理云歌扩展数据（CSS、作者注释等）
+      if(d.extensions&&d.extensions.yunge){
+        const yunge=d.extensions.yunge;
+        // 还原自定义CSS
+        if(yunge.custom_css){
+          // 保存为CSS预设
+          if(!A.appear.cssPresets) A.appear.cssPresets=[];
+          A.appear.cssPresets.push({
+            id:gid(),
+            name:(d.name||'角色')+'的CSS',
+            css:yunge.custom_css
+          });
+          toast('🎨 发现配套CSS样式');
+        }
+        // 还原额外字段
+        if(yunge.speaking) card.speaking=yunge.speaking;
+        if(yunge.backstory) card.backstory=yunge.backstory;
+        if(yunge.likes) card.likes=yunge.likes;
+        if(yunge.secrets) card.secrets=yunge.secrets;
+        // 记住作者注释，导入后提示用户
+        if(yunge.author_note){
+          card._authorNote=yunge.author_note;
+        }
+      }
+
+      // 如果有系统提示词，保存到notes里供用户参考
+      if(d.system_prompt&&d.system_prompt.trim()){
+        card.notes=(card.notes?card.notes+'\n\n':'')+'[配套系统提示词]\n'+d.system_prompt;
+        card._systemPrompt=d.system_prompt;
+      }
+      if(d.post_history_instructions&&d.post_history_instructions.trim()){
+        card.notes=(card.notes?card.notes+'\n\n':'')+'[配套规则句]\n'+d.post_history_instructions;
+        card._jbPrompt=d.post_history_instructions;
+      }
+      
+const imgR=new FileReader();
+      imgR.onload=ev=>{
+        card.avatar=ev.target.result;
+        A.chars.push(card);
+        saveState();
+        renderChars();updateCharSel();renderWBList();updateWBChecks();
+        renderCSSPresets();
+        
+        // 询问是否自动配置当前对话
+        if(card._systemPrompt||card._jbPrompt||card._authorNote){
+          const apply=confirm('检测到角色卡包含配套提示词，是否自动应用到当前对话？\n\n'
+            +(card._systemPrompt?'✅ 系统提示词\n':'')
+            +(card._jbPrompt?'✅ 规则句\n':'')
+            +(card._authorNote?'✅ 作者注释\n':'')
+          );
+          if(apply){
+            const chat=getChat();
+            if(chat){
+              if(card._systemPrompt) chat.systemPrompt=card._systemPrompt;
+              if(card._jbPrompt) chat.jailbreakPrompt=card._jbPrompt;
+              if(card._authorNote) chat.authorNote=card._authorNote;
+              // 自动绑定角色卡
+              if(!chat.charIds) chat.charIds=[];
+              if(!chat.charIds.includes(card.id)) chat.charIds.push(card.id);
+              chat.charId=card.id;
+              // 自动绑定世界书
+              const lastWB=A.worldbooks[A.worldbooks.length-1];
+              if(lastWB&&!chat.wbIds.includes(lastWB.id)){
+                chat.wbIds.push(lastWB.id);
+              }
+              saveState();loadChat();
+              toast('✅ 已自动配置当前对话');
+            }
+          }
+        }
+        
+        toast('✅ PNG导入: '+card.name);
+      };
       imgR.readAsDataURL(file);
     }catch(err){toast('❌ '+err.message);}
   };input.click();
@@ -3035,7 +3208,7 @@ function executeImport(){
   renderAll();saveState();A._importData=null;closeRE();
   toast(`✅ 已导入: ${imported.join('、')}`);
 }
-function renderAll(){renderChatList();loadChat();renderChars();renderPersonas();renderWBList();renderPresets();renderArranger();renderRegex();renderSaves();renderSavedAPIs();renderPlugins();renderPlaylistManager();renderFontLibrary();}
+function renderAll(){renderChatList();loadChat();renderChars();renderPersonas();renderWBList();renderPresets();renderArranger();renderRegex();renderSaves();renderSavedAPIs();renderPlugins();renderPlaylistManager();renderFontLibrary();renderCSSPresets();updateCSSSelect();}
 function fixChats(){A.chats.forEach(c=>{if(!c.wbIds)c.wbIds=[];if(c.authorNote===undefined)c.authorNote='';if(c.anDepth===undefined)c.anDepth=4;if(c.ctxLimit===undefined)c.ctxLimit=0;if(!c.arrangement)c.arrangement=[];if(c.playlistId===undefined)c.playlistId=null;if(c.playMode===undefined)c.playMode='sequential';});}
 
 // ===== 搜索 =====
@@ -3135,7 +3308,6 @@ function closePE(){document.getElementById('persona-modal').classList.remove('sh
 function updateCharSel(){
   const el=document.getElementById('chat-char-checks');if(!el)return;
   const c=getChat();
-  // 兼容旧数据：如果还是旧的单个charId，转换成数组
   if(c&&c.charId&&!c.charIds){
     c.charIds=[c.charId];
     c.charId=null;
@@ -3143,15 +3315,32 @@ function updateCharSel(){
   }
   if(!c||!A.chars.length){el.innerHTML='<span style="font-size:12px;color:var(--text-muted);">无角色卡</span>';return;}
   const boundIds=c.charIds||[];
-  let h='';
-  A.chars.forEach(x=>{
-    const icon=x.type==='single'?'👤':'👥';
-    h+=`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px;cursor:pointer;">
-      <input type="checkbox" ${boundIds.includes(x.id)?'checked':''} onchange="toggleCharBind('${x.id}',this.checked)"/>
-      ${icon} ${esc(x.name)}
-    </label>`;
+  
+  // 已绑定的角色标签
+  let tagsHTML='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;" id="char-bound-tags">';
+  boundIds.forEach(id=>{
+    const ch=A.chars.find(x=>x.id===id);
+    if(!ch)return;
+    const icon=ch.type==='single'?'👤':'👥';
+    tagsHTML+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--accent-dim);color:var(--accent);border-radius:12px;font-size:11px;font-weight:600;">
+      ${icon} ${esc(ch.name)}
+      <span onclick="toggleCharBind('${id}',false);updateCharSel();" style="cursor:pointer;font-size:13px;margin-left:2px;">✕</span>
+    </span>`;
   });
-  el.innerHTML=h;
+  if(!boundIds.length) tagsHTML+='<span style="font-size:11px;color:var(--text-muted);">未绑定角色卡</span>';
+  tagsHTML+='</div>';
+  
+  // 下拉选择框
+  let selectHTML=`<select onchange="if(this.value){toggleCharBind(this.value,true);updateCharSel();this.value='';}" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12.5px;">
+    <option value="">＋ 点击添加角色卡...</option>`;
+  A.chars.forEach(x=>{
+    if(boundIds.includes(x.id))return; // 已绑定的不显示
+    const icon=x.type==='single'?'👤':'👥';
+    selectHTML+=`<option value="${x.id}">${icon} ${esc(x.name)}</option>`;
+  });
+  selectHTML+='</select>';
+  
+  el.innerHTML=tagsHTML+selectHTML;
 }
 function updatePersonaSel(){const s=document.getElementById('chat-persona-sel');if(!s)return;const c=getChat();s.innerHTML='<option value="">— 不绑定 —</option>';A.personas.forEach(x=>{s.innerHTML+=`<option value="${x.id}" ${c?.personaId===x.id?'selected':''}>${x.name}</option>`;});}
 function bindChar(v){const c=getChat();if(c){c.charId=v||null;saveState();}}
@@ -3429,7 +3618,38 @@ function delWB(id){if(!confirm('删除？'))return;A.worldbooks=A.worldbooks.fil
 function expWB(id){const w=A.worldbooks.find(x=>x.id===id);if(!w)return;dl(JSON.stringify(w,null,2),`wb_${w.name}.json`);}
 function exportAllWB(){if(!A.worldbooks.length)return;dl(JSON.stringify(A.worldbooks,null,2),'all_wb.json');}
 function importWB(){fileIn('.json',d=>{if(Array.isArray(d))d.forEach(w=>{w.id=gid();A.worldbooks.push(w);});else{d.id=gid();A.worldbooks.push(d);}WBCache.invalidate();saveState();renderWBList();updateWBChecks();toast('✅');});}
-function updateWBChecks(){const el=document.getElementById('chat-wb-checks');if(!el)return;const c=getChat();if(!A.worldbooks.length){el.innerHTML='<span style="font-size:12px;color:var(--text-muted);">无</span>';return;}let h='';A.worldbooks.forEach(w=>{h+=`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px;cursor:pointer;"><input type="checkbox" ${c?.wbIds?.includes(w.id)?'checked':''} onchange="toggleCWB('${w.id}',this.checked)"/>📘${esc(w.name)}</label>`;});el.innerHTML=h;}
+function updateWBChecks(){
+  const el=document.getElementById('chat-wb-checks');if(!el)return;
+  const c=getChat();
+  if(!A.worldbooks.length){el.innerHTML='<span style="font-size:12px;color:var(--text-muted);">无世界书</span>';return;}
+  const boundIds=c?.wbIds||[];
+  
+  // 已绑定的世界书标签
+  let tagsHTML='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;" id="wb-bound-tags">';
+  boundIds.forEach(id=>{
+    const wb=A.worldbooks.find(x=>x.id===id);
+    if(!wb)return;
+    const entryCount=wb.entries?wb.entries.length:0;
+    tagsHTML+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--accent-dim);color:var(--accent);border-radius:12px;font-size:11px;font-weight:600;">
+      📘 ${esc(wb.name)} (${entryCount})
+      <span onclick="toggleCWB('${id}',false);updateWBChecks();" style="cursor:pointer;font-size:13px;margin-left:2px;">✕</span>
+    </span>`;
+  });
+  if(!boundIds.length) tagsHTML+='<span style="font-size:11px;color:var(--text-muted);">未绑定世界书</span>';
+  tagsHTML+='</div>';
+  
+  // 下拉选择框
+  let selectHTML=`<select onchange="if(this.value){toggleCWB(this.value,true);updateWBChecks();this.value='';}" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12.5px;">
+    <option value="">＋ 点击添加世界书...</option>`;
+  A.worldbooks.forEach(w=>{
+    if(boundIds.includes(w.id))return; // 已绑定的不显示
+    const entryCount=w.entries?w.entries.length:0;
+    selectHTML+=`<option value="${w.id}">📘 ${esc(w.name)} (${entryCount}条)</option>`;
+  });
+  selectHTML+='</select>';
+  
+  el.innerHTML=tagsHTML+selectHTML;
+}
 function toggleCWB(wid,on){const c=getChat();if(!c)return;if(!c.wbIds)c.wbIds=[];if(on&&!c.wbIds.includes(wid))c.wbIds.push(wid);if(!on)c.wbIds=c.wbIds.filter(x=>x!==wid);WBCache.invalidate();saveState();}
 
 // ===== 对话管理 =====
@@ -3884,6 +4104,9 @@ function loadChat(){
     // 加载对话绑定的字体
   applyChatFont(c);
   updateFontSelect();
+    // 加载对话绑定的CSS预设
+  applyChatCSS(c);
+  updateCSSSelect();
     // 加载对话专属背景图
   applyChatBgToUI(c);
   // 恢复背景图URL输入框
@@ -5332,6 +5555,115 @@ function renderTags(html){
     var sourceH=source?'<div class="proph-source">'+esc(source)+'</div>':'';
     var timeH=time?'<div class="proph-time">'+esc(time)+'</div>':'';
     return '<div class="tag-prophecy"><div class="proph-stars">'+starsH+'</div><div class="proph-header"><div class="proph-eye">'+esc(icon)+'</div><div class="proph-title">'+esc(title)+'</div>'+sourceH+'</div><div class="proph-divider"></div><div class="proph-body"><div class="proph-text">'+fmtInner(content)+'</div></div><div class="proph-footer">'+timeH+'</div></div>';
+  });
+  
+    // ===== panel 万能面板 =====
+  html=html.replace(new RegExp('<panel\\s+style="([^"]*)"(?:\\s+title="([^"]*)")?>(.*?)</panel>',S),function(m,style,title,content){
+    var styles={
+      glass:'background:rgba(255,255,255,0.12);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.2);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.1);',
+      dark:'background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #2a2a4a;border-radius:16px;color:#e0e0ff;box-shadow:0 8px 32px rgba(0,0,0,0.3);',
+      warm:'background:linear-gradient(135deg,#fef9ef,#fdf2e9);border:1px solid #f0d8b0;border-radius:16px;color:#5a4020;box-shadow:0 4px 16px rgba(0,0,0,0.06);',
+      cool:'background:linear-gradient(135deg,#f0f4ff,#e8f0fe);border:1px solid #c8d8f0;border-radius:16px;color:#2a3a5a;box-shadow:0 4px 16px rgba(0,0,0,0.06);',
+      neon:'background:#0a0a1a;border:1px solid #00f0ff;border-radius:16px;color:#00f0ff;box-shadow:0 0 20px rgba(0,240,255,0.15),inset 0 0 20px rgba(0,240,255,0.05);',
+      pink:'background:linear-gradient(135deg,#fff5f5,#ffe8f0);border:1px solid #ffc0d0;border-radius:16px;color:#8a2050;box-shadow:0 4px 16px rgba(255,100,150,0.1);',
+      wood:'background:linear-gradient(180deg,#f5ead0,#e8d8b8);border:2px solid #c8a870;border-radius:8px;color:#3a2810;box-shadow:0 4px 12px rgba(0,0,0,0.1);font-family:"STKaiti","KaiTi",serif;',
+      metal:'background:linear-gradient(180deg,#e8e8f0,#c8c8d8);border:1px solid #a0a0b8;border-radius:12px;color:#2a2a3a;box-shadow:0 2px 8px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.5);'
+    };
+    var s=styles[style]||styles['glass'];
+    var titleH=title?'<div style="font-size:15px;font-weight:700;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(128,128,128,0.2);">'+esc(title)+'</div>':'';
+    return '<div style="'+s+'padding:16px;margin:8px 0;overflow:hidden;">'+titleH+fmtInner(content)+'</div>';
+  });
+
+  // ===== grid 网格布局 =====
+  html=html.replace(new RegExp('<grid\\s+cols="([^"]*)">(.*?)</grid>',S),function(m,cols,content){
+    var items='';
+    content.replace(new RegExp('<cell(?:\\s+icon="([^"]*)")?(?:\\s+label="([^"]*)")?(?:\\s+color="([^"]*)")?>(.*?)</cell>',S),function(cm,icon,label,color,inner){
+      color=color||'rgba(128,128,128,0.1)';
+      items+='<div style="background:'+color+';border-radius:12px;padding:14px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all 0.2s;border:1px solid rgba(128,128,128,0.1);">'
+        +(icon?'<div style="font-size:24px;">'+icon+'</div>':'')
+        +(label?'<div style="font-size:12px;font-weight:600;">'+esc(label)+'</div>':'')
+        +(inner.trim()?'<div style="font-size:11px;opacity:0.7;">'+fmtInner(inner.trim())+'</div>':'')
+      +'</div>';
+      return '';
+    });
+    return '<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin:8px 0;">'+items+'</div>';
+  });
+
+  // ===== music-player 音乐播放器UI =====
+  html=html.replace(new RegExp('<music-player(?:\\s+title="([^"]*)")?(?:\\s+artist="([^"]*)")?(?:\\s+lyric="([^"]*)")?(?:\\s+style="([^"]*)")?>(.*?)</music-player>',S),function(m,title,artist,lyric,pstyle,content){
+    title=title||'未知歌曲';artist=artist||'未知艺术家';pstyle=pstyle||'glass';
+    
+    var bgStyles={
+      glass:'background:rgba(255,255,255,0.15);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.25);',
+      dark:'background:linear-gradient(135deg,#1a1a2e,#0f0f1a);border:1px solid #2a2a4a;',
+      warm:'background:linear-gradient(135deg,#2a1a10,#1a1010);border:1px solid #4a3020;'
+    };
+    var bg=bgStyles[pstyle]||bgStyles['glass'];
+    
+    // 解析歌单
+    var trackList='';
+    var tracks=[];
+    content.replace(new RegExp('<track(?:\\s+artist="([^"]*)")?>(.*?)</track>','gi'),function(tm,ta,tn){
+      tracks.push({name:tn.trim(),artist:ta||''});
+    });
+    if(tracks.length){
+      trackList='<div style="max-height:140px;overflow-y:auto;margin-top:10px;padding:8px;background:rgba(128,128,128,0.08);border-radius:10px;">';
+      tracks.forEach(function(t,i){
+        var isFirst=i===0;
+        trackList+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-bottom:4px;'+(isFirst?'background:rgba(100,180,255,0.1);':'')+'cursor:pointer;">'
+          +'<div style="font-size:13px;font-weight:'+(isFirst?'700':'400')+';color:'+(isFirst?'#4a9eff':'inherit')+';">'+esc(t.name)+'</div>'
+          +'<div style="font-size:11px;opacity:0.5;">'+esc(t.artist)+'</div>'
+        +'</div>';
+      });
+      trackList+='</div>';
+    }
+    
+    return '<div style="'+bg+'border-radius:18px;padding:20px;margin:8px 0;color:#e0e8f0;box-shadow:0 8px 32px rgba(0,0,0,0.2);">'
+      +'<div style="font-size:18px;font-weight:800;margin-bottom:4px;">'+esc(title)+'</div>'
+      +'<div style="font-size:13px;color:#4a9eff;margin-bottom:12px;">'+esc(artist)+'</div>'
+      +(lyric?'<div style="font-size:13px;color:rgba(255,255,255,0.6);font-style:italic;margin:12px 0;padding:8px 0;border-top:1px solid rgba(255,255,255,0.1);">"'+esc(lyric)+'"</div>':'')
+      +'<div style="display:flex;align-items:center;justify-content:center;gap:20px;margin:16px 0;">'
+        +'<span style="font-size:18px;opacity:0.6;cursor:pointer;">⏮</span>'
+        +'<div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);">⏸</div>'
+        +'<span style="font-size:18px;opacity:0.6;cursor:pointer;">⏭</span>'
+      +'</div>'
+      +'<div style="height:3px;background:rgba(255,255,255,0.1);border-radius:2px;margin:8px 0;overflow:hidden;"><div style="width:35%;height:100%;background:linear-gradient(90deg,#4a9eff,#7c5cff);border-radius:2px;"></div></div>'
+      +trackList
+    +'</div>';
+  });
+
+  // ===== profile 角色资料卡 =====
+  html=html.replace(new RegExp('<profile(?:\\s+name="([^"]*)")?(?:\\s+title="([^"]*)")?(?:\\s+avatar="([^"]*)")?(?:\\s+cover="([^"]*)")?(?:\\s+style="([^"]*)")?>(.*?)</profile>',S),function(m,name,title,avatar,cover,pstyle,content){
+    name=name||'未知';avatar=avatar||'👤';pstyle=pstyle||'glass';
+    
+    var bgStyles={
+      glass:'background:rgba(255,255,255,0.1);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.2);color:#e0e8f0;',
+      light:'background:#fff;border:1px solid #e8e8e8;color:#333;',
+      dark:'background:linear-gradient(135deg,#1a1a2e,#0f0f1a);border:1px solid #2a2a4a;color:#e0e8f0;'
+    };
+    var bg=bgStyles[pstyle]||bgStyles['glass'];
+    
+    var avInner=avatar.length<=2?avatar:'<img src="'+esc(avatar)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" alt=""/>';
+    
+    // 解析 stat 标签
+    content=content.replace(new RegExp('<stat\\s+name="([^"]*)"\\s+value="([^"]*)"\\s*\\/?>','gi'),function(sm,sn,sv){
+      return '<div style="text-align:center;padding:8px 4px;"><div style="font-size:16px;font-weight:800;">'+esc(sv)+'</div><div style="font-size:10px;opacity:0.5;margin-top:2px;">'+esc(sn)+'</div></div>';
+    });
+    
+    // 包裹连续的 stat
+    content=content.replace(/((?:<div style="text-align:center;padding:8px 4px;">[\s\S]*?<\/div>\s*){2,})/g,
+      '<div style="display:flex;justify-content:space-around;padding:8px 0;margin:8px 0;border-top:1px solid rgba(128,128,128,0.15);border-bottom:1px solid rgba(128,128,128,0.15);">$1</div>');
+    
+    return '<div style="'+bg+'border-radius:18px;overflow:hidden;margin:8px 0;box-shadow:0 8px 32px rgba(0,0,0,0.15);max-width:360px;">'
+      +'<div style="height:80px;background:linear-gradient(135deg,#667eea,#764ba2);position:relative;">'
+        +'<div style="position:absolute;bottom:-24px;left:20px;width:52px;height:52px;border-radius:50%;border:3px solid rgba(255,255,255,0.8);background:#667eea;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.2);">'+avInner+'</div>'
+      +'</div>'
+      +'<div style="padding:32px 20px 16px;">'
+        +'<div style="font-size:17px;font-weight:800;">'+esc(name)+'</div>'
+        +(title?'<div style="font-size:12px;opacity:0.5;margin-top:2px;">'+esc(title)+'</div>':'')
+        +'<div style="margin-top:10px;font-size:13px;line-height:1.7;">'+fmtInner(content)+'</div>'
+      +'</div>'
+    +'</div>';
   });
 
   return html;
@@ -7649,6 +7981,141 @@ function applyAnimation(anim){
   A.appear.uiAnimation=anim;
   saveState();
   toast('✅ 动画已更新');
+}
+
+// ========================================
+// ===== CSS预设库系统 =====
+// ========================================
+
+function getCSSPresets(){
+  if(!A.appear.cssPresets) A.appear.cssPresets=[];
+  return A.appear.cssPresets;
+}
+
+function saveCSSPreset(){
+  const css=document.getElementById('custom-css-input').value.trim();
+  if(!css){toast('❌ 请先在下方写CSS内容');return;}
+  const name=prompt('给这个CSS预设起个名字:','我的风格');
+  if(!name)return;
+  getCSSPresets().push({id:gid(),name:name.trim(),css});
+  saveState();
+  renderCSSPresets();
+  updateCSSSelect();
+  toast('✅ CSS预设已保存: '+name.trim());
+}
+
+function loadCSSPreset(id){
+  const preset=getCSSPresets().find(x=>x.id===id);
+  if(!preset)return;
+  document.getElementById('custom-css-input').value=preset.css;
+  applyCustomCSS();
+  toast('✅ 已加载: '+preset.name);
+}
+
+function editCSSPreset(id){
+  const preset=getCSSPresets().find(x=>x.id===id);
+  if(!preset)return;
+  document.getElementById('re-title').textContent='✏️ 编辑CSS预设: '+preset.name;
+  document.getElementById('re-body').innerHTML=`
+    <div class="form-group"><label>预设名称</label><input type="text" id="cssp-name" value="${esc(preset.name)}"/></div>
+    <div class="form-group"><label>CSS内容</label><textarea id="cssp-css" rows="16" style="font-family:Consolas,monospace;font-size:12px;line-height:1.5;">${esc(preset.css)}</textarea></div>
+    <div class="btn-group">
+      <button class="btn btn-success" onclick="saveEditCSSPreset('${id}')">💾 保存</button>
+      <button class="btn btn-secondary" onclick="closeRE()">取消</button>
+    </div>`;
+  document.getElementById('regex-modal').classList.add('show');
+}
+
+function saveEditCSSPreset(id){
+  const preset=getCSSPresets().find(x=>x.id===id);
+  if(!preset)return;
+  preset.name=document.getElementById('cssp-name').value.trim()||preset.name;
+  preset.css=document.getElementById('cssp-css').value;
+  saveState();
+  renderCSSPresets();
+  updateCSSSelect();
+  closeRE();
+  // 如果当前对话绑定了这个预设，重新应用
+  const chat=getChat();
+  if(chat&&chat.cssPresetId===id) applyChatCSS(chat);
+  toast('✅ 已更新');
+}
+
+function deleteCSSPreset(id){
+  if(!confirm('删除此CSS预设？'))return;
+  const presets=getCSSPresets();
+  const idx=presets.findIndex(x=>x.id===id);
+  if(idx>=0) presets.splice(idx,1);
+  A.chats.forEach(c=>{if(c.cssPresetId===id) c.cssPresetId=null;});
+  saveState();
+  renderCSSPresets();
+  updateCSSSelect();
+  toast('✅ 已删除');
+}
+
+function bindChatCSS(presetId){
+  const chat=getChat();
+  if(!chat)return;
+  chat.cssPresetId=presetId||null;
+  saveState();
+  applyChatCSS(chat);
+  toast(presetId?'✅ 对话CSS已绑定':'✅ 已恢复全局CSS');
+}
+
+function applyChatCSS(chat){
+  let styleEl=document.getElementById('chat-css-override');
+  if(!styleEl){
+    styleEl=document.createElement('style');
+    styleEl.id='chat-css-override';
+    document.head.appendChild(styleEl);
+  }
+  if(chat&&chat.cssPresetId){
+    const preset=getCSSPresets().find(x=>x.id===chat.cssPresetId);
+    if(preset){
+      styleEl.textContent=preset.css;
+      return;
+    }
+  }
+  styleEl.textContent='';
+}
+
+function renderCSSPresets(){
+  const el=document.getElementById('css-preset-list');
+  if(!el)return;
+  const presets=getCSSPresets();
+  if(!presets.length){
+    el.innerHTML='<span style="font-size:12px;color:var(--text-muted);">无预设，在下方写好CSS后点保存</span>';
+    return;
+  }
+  const chat=getChat();
+  let h='';
+  presets.forEach(p=>{
+    const isBound=chat&&chat.cssPresetId===p.id;
+    const isGlobal=A.appear.customCSS===p.css;
+    let statusText='';
+    if(isBound) statusText='<span style="color:var(--success);font-size:10px;font-weight:600;">📌 当前对话</span>';
+    h+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-input);border:1px solid ${isBound?'var(--accent)':'var(--border)'};border-radius:var(--radius-sm);margin-bottom:4px;font-size:12px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--text-primary);">🎨 ${esc(p.name)} ${statusText}</div>
+        <div style="font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.css.substring(0,60))}...</div>
+      </div>
+      <button onclick="loadCSSPreset('${p.id}')" style="background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:10px;" title="加载到编辑器">📥</button>
+      <button onclick="editCSSPreset('${p.id}')" style="background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:10px;">✏️</button>
+      <button onclick="deleteCSSPreset('${p.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;">🗑️</button>
+    </div>`;
+  });
+  el.innerHTML=h;
+}
+
+function updateCSSSelect(){
+  const sel=document.getElementById('chat-css-sel');
+  if(!sel)return;
+  const chat=getChat();
+  const presets=getCSSPresets();
+  sel.innerHTML='<option value="">— 使用全局CSS —</option>';
+  presets.forEach(p=>{
+    sel.innerHTML+=`<option value="${p.id}" ${chat?.cssPresetId===p.id?'selected':''}>${esc(p.name)}</option>`;
+  });
 }
 
 function applyCustomCSS(){
