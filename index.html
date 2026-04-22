@@ -1833,11 +1833,16 @@ async function saveStateChunked(){
     
     // 对话索引（不含消息内容，只存元信息）
     const chatIndex=A.chats.map(c=>({
-      id:c.id,name:c.name,charId:c.charId,personaId:c.personaId,
+      id:c.id,name:c.name,charId:c.charId,charIds:c.charIds,personaId:c.personaId,
       wbIds:c.wbIds,systemPrompt:c.systemPrompt,jailbreakPrompt:c.jailbreakPrompt,
       authorNote:c.authorNote,anDepth:c.anDepth,ctxLimit:c.ctxLimit,
       arrangement:c.arrangement,msgCount:c.messages?c.messages.length:0,
-      parentChatId:c.parentChatId,forkPoint:c.forkPoint
+      parentChatId:c.parentChatId,forkPoint:c.forkPoint,
+      autoSummary:c.autoSummary,keepRecent:c.keepRecent,
+      summaryText:c.summaryText,summaryMsgCount:c.summaryMsgCount,
+      msgLimit:c.msgLimit,
+      playlistId:c.playlistId,playMode:c.playMode,bgmId:c.bgmId,
+      fontId:c.fontId,chatBgImage:c.chatBgImage
     }));
     store.put(chatIndex,'chatIndex');
     store.put(A.activeChatId,'activeChatId');
@@ -1865,6 +1870,15 @@ async function saveStateChunked(){
 }
 
 async function loadStateChunked(){
+  // 检查是否有紧急备份
+  let _emergChat=null;
+  try{
+    const emergency=localStorage.getItem('ai-engine-emergency');
+    if(emergency){
+      _emergChat=JSON.parse(emergency);
+      localStorage.removeItem('ai-engine-emergency');
+    }
+  }catch(e){}
   try{
     const db=await openDB();
     const tx=db.transaction(STORE_NAME,'readonly');
@@ -1904,6 +1918,23 @@ async function loadStateChunked(){
         A.chats.push({...ci,messages:msgs});
       }
       fixChats();
+        // 恢复紧急备份：只恢复当前对话的消息
+  if(_emergChat&&_emergChat.chatId&&_emergChat.messages){
+    const target=A.chats.find(c=>c.id===_emergChat.chatId);
+    if(target){
+      const dbCount=target.messages?target.messages.length:0;
+      const emCount=_emergChat.messages.length;
+      if(emCount>dbCount){
+        console.log('恢复紧急备份:',target.name,dbCount,'→',emCount,'条');
+        target.messages=_emergChat.messages;
+        if(_emergChat.summaryText)target.summaryText=_emergChat.summaryText;
+        if(_emergChat.autoSummary!==undefined)target.autoSummary=_emergChat.autoSummary;
+        if(_emergChat.keepRecent)target.keepRecent=_emergChat.keepRecent;
+        if(_emergChat.summaryMsgCount)target.summaryMsgCount=_emergChat.summaryMsgCount;
+        saveStateChunked();
+      }
+    }
+  }
       return;
     }
     
@@ -2099,6 +2130,43 @@ window.addEventListener('online',function(){
   setTimeout(()=>el.classList.remove('show'),3000);
 });
 
+// ========================================
+// ===== 页面关闭/切后台时强制保存 =====
+// ========================================
+window.addEventListener('beforeunload',function(){
+  // 只紧急保存当前对话的消息（最小化数据量）
+  try{
+    const chat=getChat();
+    if(chat){
+      const emergData={
+        chatId:chat.id,
+        messages:chat.messages,
+        autoSummary:chat.autoSummary,
+        keepRecent:chat.keepRecent,
+        summaryText:chat.summaryText,
+        summaryMsgCount:chat.summaryMsgCount,
+        timestamp:Date.now()
+      };
+      localStorage.setItem('ai-engine-emergency',JSON.stringify(emergData));
+    }
+  }catch(e){}
+  // 同时尝试完整的IndexedDB保存
+  saveStateChunked();
+});
+
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden'){
+    saveStateChunked();
+  }
+});
+
+// 每60秒自动保存一次（防止手机杀后台）
+setInterval(function(){
+  if(A.chats&&A.chats.length){
+    saveStateChunked();
+  }
+},300000);
+
 window.addEventListener('offline',function(){
   _isOnline=false;
   const el=document.getElementById('network-toast');
@@ -2228,6 +2296,188 @@ function applyMacros(text){
 }
 
 // ========================================
+// ===== 角色卡导出为PNG =====
+// ========================================
+async function exportCharPNG(id){
+  const c=A.chars.find(x=>x.id===id);
+  if(!c){toast('❌ 找不到角色卡');return;}
+  
+  toast('⏳ 正在生成PNG...');
+  
+  try{
+    // 1. 构建酒馆兼容的JSON数据
+    const tavernData={
+      spec:'chara_card_v2',
+      spec_version:'2.0',
+      data:{
+        name:c.name||'',
+        description:buildCharDescription(c),
+        personality:c.personality||'',
+        scenario:c.identity||'',
+        first_mes:c.firstMessage||'',
+        mes_example:c.examples||'',
+        creator_notes:c.notes||'',
+        system_prompt:'',
+        post_history_instructions:'',
+        alternate_greetings:c.alternateGreetings||[],
+        tags:[],
+        creator:'云歌导出',
+        character_version:'1.0',
+        extensions:{}
+      }
+    };
+    
+    // 2. 准备头像图片
+    const canvas=document.createElement('canvas');
+    const ctx=canvas.getContext('2d');
+    
+    if(c.avatar&&c.avatar.startsWith('data:')){
+      // 有头像，用头像
+      const img=new Image();
+      await new Promise((resolve,reject)=>{
+        img.onload=resolve;
+        img.onerror=reject;
+        img.src=c.avatar;
+      });
+      canvas.width=img.width;
+      canvas.height=img.height;
+      ctx.drawImage(img,0,0);
+    }else{
+      // 没有头像，生成一张默认图
+      canvas.width=400;
+      canvas.height=400;
+      // 渐变背景
+      const grad=ctx.createLinearGradient(0,0,400,400);
+      grad.addColorStop(0,'#667eea');
+      grad.addColorStop(1,'#764ba2');
+      ctx.fillStyle=grad;
+      ctx.fillRect(0,0,400,400);
+      // 角色名首字
+      ctx.fillStyle='#ffffff';
+      ctx.font='bold 120px sans-serif';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillText((c.name||'?')[0],200,180);
+      // 角色名
+      ctx.font='bold 28px sans-serif';
+      ctx.fillText(c.name||'未命名',200,300);
+      // 标记
+      ctx.font='16px sans-serif';
+      ctx.fillStyle='rgba(255,255,255,0.5)';
+      ctx.fillText('云歌角色卡',200,350);
+    }
+    
+    // 3. 获取PNG原始数据
+    const pngBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    const pngBuf=new Uint8Array(await pngBlob.arrayBuffer());
+    
+    // 4. 将角色数据编码为Base64
+    const jsonStr=JSON.stringify(tavernData);
+    const encoder=new TextEncoder();
+    const jsonBytes=encoder.encode(jsonStr);
+    const b64=btoa(String.fromCharCode(...jsonBytes));
+    
+    // 5. 创建tEXt数据块
+    const keyword='chara';
+    const keywordBytes=encoder.encode(keyword);
+    const chunkData=new Uint8Array(keywordBytes.length+1+b64.length);
+    chunkData.set(keywordBytes,0);
+    chunkData[keywordBytes.length]=0; // null separator
+    const b64Bytes=encoder.encode(b64);
+    chunkData.set(b64Bytes,keywordBytes.length+1);
+    
+    const chunkType=encoder.encode('tEXt');
+    const chunkLen=chunkData.length;
+    
+    // 计算CRC
+    const crcData=new Uint8Array(4+chunkLen);
+    crcData.set(chunkType,0);
+    crcData.set(chunkData,4);
+    const crc=crc32(crcData);
+    
+    // 6. 构建完整的PNG（在IEND前插入tEXt块）
+    // 找到IEND的位置
+    let iendPos=-1;
+    for(let i=pngBuf.length-12;i>=0;i--){
+      if(pngBuf[i]===0x49&&pngBuf[i+1]===0x45&&pngBuf[i+2]===0x4E&&pngBuf[i+3]===0x44){
+        iendPos=i-4; // IEND chunk的length字段开始位置
+        break;
+      }
+    }
+    
+    if(iendPos<0){toast('❌ PNG格式错误');return;}
+    
+    // 构建tEXt chunk: [4字节长度][4字节类型][数据][4字节CRC]
+    const textChunk=new Uint8Array(4+4+chunkLen+4);
+    textChunk[0]=(chunkLen>>24)&0xFF;
+    textChunk[1]=(chunkLen>>16)&0xFF;
+    textChunk[2]=(chunkLen>>8)&0xFF;
+    textChunk[3]=chunkLen&0xFF;
+    textChunk.set(chunkType,4);
+    textChunk.set(chunkData,8);
+    textChunk[8+chunkLen]=(crc>>24)&0xFF;
+    textChunk[8+chunkLen+1]=(crc>>16)&0xFF;
+    textChunk[8+chunkLen+2]=(crc>>8)&0xFF;
+    textChunk[8+chunkLen+3]=crc&0xFF;
+    
+    // 拼接：PNG头部 + tEXt块 + IEND块
+    const before=pngBuf.slice(0,iendPos);
+    const after=pngBuf.slice(iendPos);
+    const finalPng=new Uint8Array(before.length+textChunk.length+after.length);
+    finalPng.set(before,0);
+    finalPng.set(textChunk,before.length);
+    finalPng.set(after,before.length+textChunk.length);
+    
+    // 7. 下载
+    const blob=new Blob([finalPng],{type:'image/png'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=(c.name||'角色卡')+'.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    
+    toast('✅ PNG导出成功: '+c.name);
+  }catch(e){
+    toast('❌ 导出失败: '+e.message);
+    console.error(e);
+  }
+}
+
+// 构建角色描述（把云歌的分字段合并成酒馆的description）
+function buildCharDescription(c){
+  let desc='';
+  if(c.gender) desc+='性别: '+c.gender+'\n';
+  if(c.age) desc+='年龄: '+c.age+'\n';
+  if(c.identity) desc+='身份: '+c.identity+'\n';
+  if(c.appearance) desc+='外貌: '+c.appearance+'\n';
+  if(c.speaking) desc+='说话风格: '+c.speaking+'\n';
+  if(c.backstory) desc+='经历: '+c.backstory+'\n';
+  if(c.likes) desc+='喜好: '+c.likes+'\n';
+  if(c.secrets) desc+='秘密: '+c.secrets+'\n';
+  return desc.trim();
+}
+
+// CRC32计算（PNG标准需要）
+function crc32(buf){
+  let table=crc32.table;
+  if(!table){
+    table=crc32.table=new Uint32Array(256);
+    for(let i=0;i<256;i++){
+      let c=i;
+      for(let j=0;j<8;j++){
+        c=c&1?0xEDB88320^(c>>>1):c>>>1;
+      }
+      table[i]=c;
+    }
+  }
+  let crc=0xFFFFFFFF;
+  for(let i=0;i<buf.length;i++){
+    crc=table[(crc^buf[i])&0xFF]^(crc>>>8);
+  }
+  return(crc^0xFFFFFFFF)>>>0;
+}
+
+// ========================================
 // ===== PNG角色卡导入 =====
 // ========================================
 function importPNGChar(){
@@ -2265,9 +2515,25 @@ function importPNGChar(){
         noteParts.push('[备选开场白]\n'+d.alternate_greetings.join('\n---\n'));
       }
       card.notes=noteParts.join('\n\n');
+            // 处理备选开场白
+      if(d.alternate_greetings&&Array.isArray(d.alternate_greetings)&&d.alternate_greetings.length){
+        card.alternateGreetings=d.alternate_greetings;
+      }
+      
+      // 处理内嵌世界书
+      if(d.character_book&&d.character_book.entries){
+        try{
+          const wb=convertTavernWorldbook(d.character_book, (d.name||'角色')+'的世界书');
+          A.worldbooks.push(wb);
+          WBCache.invalidate();
+          toast('📖 发现内嵌世界书: '+wb.name+' ('+wb.entries.length+'条)');
+        }catch(e){
+          console.warn('内嵌世界书解析失败',e);
+        }
+      }
       
       const imgR=new FileReader();
-      imgR.onload=ev=>{card.avatar=ev.target.result;A.chars.push(card);saveState();renderChars();updateCharSel();toast('✅ PNG导入: '+card.name);};
+      imgR.onload=ev=>{card.avatar=ev.target.result;A.chars.push(card);saveState();renderChars();updateCharSel();renderWBList();updateWBChecks();toast('✅ PNG导入: '+card.name);};
       imgR.readAsDataURL(file);
     }catch(err){toast('❌ '+err.message);}
   };input.click();
@@ -2792,7 +3058,12 @@ function openCE(type,id=null){A._eid=id;const c=id?A.chars.find(x=>x.id===id):nu
     <div class="form-group"><label>核心经历 (塑造性格的关键事件，简写)</label><textarea id="ce-backstory" rows="3" placeholder="例：幼年丧母，由祖母抚养长大，因此特别珍惜身边的人...">${c?.backstory||''}</textarea></div>
     <div class="form-group"><label>喜好与厌恶</label><textarea id="ce-likes" rows="2" placeholder="例：喜欢猫、雨天、旧书店；讨厌谎言、拥挤的地方...">${c?.likes||''}</textarea></div>
     <div class="form-group"><label>弱点与秘密</label><textarea id="ce-secrets" rows="2" placeholder="例：害怕打雷（童年创伤）；其实是某组织的卧底...">${c?.secrets||''}</textarea></div>
-    <div class="form-group"><label>开场白</label><textarea id="ce-first" rows="3">${c?.firstMessage||''}</textarea></div>
+        <div class="form-group"><label>开场白（主要）</label><textarea id="ce-first" rows="3">${c?.firstMessage||''}</textarea></div>
+    <div class="form-group">
+      <label>备选开场白（每个开场白用分隔线 --- 分隔）</label>
+      <textarea id="ce-alt-greetings" rows="4" placeholder="第二个开场白内容\n---\n第三个开场白内容\n---\n第四个开场白内容">${(c?.alternateGreetings||[]).join('\n---\n')}</textarea>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">可选。用 --- 分隔多个备选开场白，新建对话时可以选择使用哪一个。</div>
+    </div>
     <div class="form-group"><label>对话示例</label><textarea id="ce-ex" rows="3">${c?.examples||''}</textarea></div>
     <div class="form-group"><label>注释</label><textarea id="ce-notes" rows="2">${c?.notes||''}</textarea></div>`;
   }else{
@@ -2817,6 +3088,8 @@ function saveCE(){
   const card={id:A._eid||gid(),type,name,firstMessage:document.getElementById('ce-first').value,notes:document.getElementById('ce-notes').value};
   if(A._eid){const old=A.chars.find(x=>x.id===A._eid);if(old?.avatar)card.avatar=old.avatar;}
   if(type==='single'){card.gender=document.getElementById('ce-gender').value;card.age=document.getElementById('ce-age').value;card.identity=document.getElementById('ce-identity').value;card.appearance=document.getElementById('ce-appear').value;card.personality=document.getElementById('ce-personality').value;card.speaking=document.getElementById('ce-speaking').value;card.backstory=document.getElementById('ce-backstory').value;card.likes=document.getElementById('ce-likes').value;card.secrets=document.getElementById('ce-secrets').value;card.examples=document.getElementById('ce-ex').value;
+      const altText=document.getElementById('ce-alt-greetings')?.value||'';
+    card.alternateGreetings=altText.trim()?altText.split(/\n---\n/).map(s=>s.trim()).filter(s=>s):[];
     const avFile=document.getElementById('ce-avatar')?.files[0];if(avFile){const reader=new FileReader();reader.onload=ev=>{card.avatar=ev.target.result;finishSaveCE(card);};reader.readAsDataURL(avFile);return;}
   }else{card.description=document.getElementById('ce-desc').value;card.groupRule=document.getElementById('ce-grule').value;card.characters=[];document.querySelectorAll('.sub-char-item').forEach(el=>{card.characters.push({name:el.querySelector('.sc-n').value.trim(),gender:el.querySelector('.sc-gender').value,age:el.querySelector('.sc-age').value,identity:el.querySelector('.sc-identity').value,appearance:el.querySelector('.sc-appear').value,personality:el.querySelector('.sc-pers').value,talkStyle:el.querySelector('.sc-t').value});});}
   finishSaveCE(card);
@@ -2825,7 +3098,7 @@ function finishSaveCE(card){if(A._eid){const i=A.chars.findIndex(x=>x.id===A._ei
 function delChar(id){if(!confirm('删除？'))return;A.chars=A.chars.filter(x=>x.id!==id);A.chats.forEach(c=>{if(c.charId===id)c.charId=null;if(c.charIds)c.charIds=c.charIds.filter(x=>x!==id);});saveState();renderChars();updateCharSel();closeCE();}
 function renderChars(){const g=document.getElementById('char-grid');if(!g)return;if(!A.chars.length){g.innerHTML='<p style="color:var(--text-muted);font-size:13px;grid-column:1/-1;">无角色卡。</p>';return;}g.innerHTML='';
   A.chars.forEach(c=>{const d=document.createElement('div');d.className='card-item';const avHTML=c.avatar?`<img src="${c.avatar}" class="card-avatar">`:'';const info=c.type==='single'?[c.gender,c.age,c.identity].filter(x=>x).join(' · '):`${c.characters?.length||0}个角色`;
-    d.innerHTML=`<span class="card-badge ${c.type}">${c.type==='single'?'单人':'多人'}</span><div class="card-title">${avHTML}${c.type==='single'?'👤':'👥'} ${esc(c.name)}</div><div class="card-desc">${esc(info)}</div><div class="card-actions"><button class="btn btn-secondary" onclick="openCE('${c.type}','${c.id}')">✏️</button><button class="btn btn-secondary" onclick="expChar('${c.id}')">📤</button></div>`;g.appendChild(d);});}
+    d.innerHTML=`<span class="card-badge ${c.type}">${c.type==='single'?'单人':'多人'}</span><div class="card-title">${avHTML}${c.type==='single'?'👤':'👥'} ${esc(c.name)}</div><div class="card-desc">${esc(info)}</div><div class="card-actions"><button class="btn btn-secondary" onclick="openCE('${c.type}','${c.id}')">✏️</button><button class="btn btn-secondary" onclick="expChar('${c.id}')">📤JSON</button><button class="btn btn-secondary" onclick="exportCharPNG('${c.id}')">🖼️PNG</button></div>`;g.appendChild(d);});}
 function expChar(id){const c=A.chars.find(x=>x.id===id);if(!c)return;dl(JSON.stringify(c,null,2),`char_${c.name}.json`);}
 function exportAllChars(){if(!A.chars.length)return;dl(JSON.stringify(A.chars,null,2),'all_chars.json');}
 function importChar(){fileIn('.json',d=>{if(Array.isArray(d))d.forEach(c=>{c.id=gid();A.chars.push(c);});else{d.id=gid();A.chars.push(d);}saveState();renderChars();updateCharSel();toast('✅');});}
@@ -2887,13 +3160,79 @@ function toggleCharBind(charId,on){
   if(!c.charIds)c.charIds=[];
   if(on&&!c.charIds.includes(charId)){
     c.charIds.push(charId);
+    // 如果是第一个绑定的角色卡，且对话没有消息，尝试插入开场白
+    if(c.charIds.length===1&&c.messages.length===0){
+      const char=A.chars.find(x=>x.id===charId);
+      if(char) showGreetingPicker(char,c);
+    }
   }
   if(!on){
     c.charIds=c.charIds.filter(x=>x!==charId);
   }
-  // 同时更新旧的charId字段（兼容其他地方的读取）
   c.charId=c.charIds.length>0?c.charIds[0]:null;
   saveState();
+}
+function showGreetingPicker(char,chat){
+  const greetings=[];
+  if(char.firstMessage) greetings.push({label:'默认开场白',content:char.firstMessage});
+  if(char.alternateGreetings&&char.alternateGreetings.length){
+    char.alternateGreetings.forEach((g,i)=>{
+      greetings.push({label:'备选 '+(i+1),content:g});
+    });
+  }
+  
+  // 如果只有一个或没有开场白，直接使用
+  if(greetings.length<=1){
+    if(greetings.length===1){
+      chat.messages.push({role:'ai',content:greetings[0].content,swipes:[greetings[0].content],swipeIdx:0});
+      saveState();loadChat();
+    }
+    return;
+  }
+  
+  // 多个开场白，弹出选择框
+  let html=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+    角色「${esc(char.name)}」有 ${greetings.length} 个开场白，请选择一个：
+  </p>`;
+  
+  greetings.forEach((g,i)=>{
+    const preview=(g.content||'').substring(0,120).replace(/\n/g,' ');
+    html+=`<div style="padding:12px;margin-bottom:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:all 0.2s;" 
+      onmouseover="this.style.borderColor='var(--accent)'" 
+      onmouseout="this.style.borderColor='var(--border)'"
+      onclick="selectGreeting(${i})">
+      <div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:4px;">
+        ${i===0?'🎭':'✨'} ${esc(g.label)}
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.5;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
+        ${esc(preview)}${g.content.length>120?'...':''}
+      </div>
+    </div>`;
+  });
+  
+  html+=`<button class="btn btn-secondary" onclick="closeRE()" style="width:100%;margin-top:8px;">跳过（不使用开场白）</button>`;
+  
+  // 暂存数据
+  A._greetingChat=chat.id;
+  A._greetings=greetings;
+  
+  document.getElementById('re-title').textContent='🎭 选择开场白';
+  document.getElementById('re-body').innerHTML=html;
+  document.getElementById('regex-modal').classList.add('show');
+}
+
+function selectGreeting(idx){
+  const chat=A.chats.find(x=>x.id===A._greetingChat);
+  const greetings=A._greetings;
+  if(!chat||!greetings||!greetings[idx])return;
+  
+  const content=greetings[idx].content;
+  chat.messages.push({role:'ai',content:content,swipes:greetings.map(g=>g.content),swipeIdx:idx});
+  
+  A._greetingChat=null;
+  A._greetings=null;
+  saveState();loadChat();closeRE();
+  toast('✅ 已使用: '+greetings[idx].label);
 }
 function bindPersona(v){const c=getChat();if(c){c.personaId=v||null;saveState();}}
 
@@ -4023,21 +4362,39 @@ function toggleBookmark(b){const el=b.closest('.message');const c=getChat();cons
 function toggleCollapse(b){const bub=b.closest('.message').querySelector('.msg-bubble');bub.classList.toggle('collapsed');if(bub.classList.contains('collapsed')){bub.onclick=function(){this.classList.remove('collapsed');this.onclick=null;};}else{bub.onclick=null;}}
 
 async function reMsg(b){
-  if(A.isGen)return;const el=b.closest('.message');const c=getChat();
-  const i=getDisplayMsgIdx(el);if(i<0||!c)return;
+  if(A.isGen)return;
+  const c=getChat();if(!c||!c.messages.length)return;
+  
+  const el=b.closest('.message');
+  let i=getDisplayMsgIdx(el);
+  
+  // 如果通过DOM找不到，直接找最后一条AI消息
+  if(i<0){
+    for(let j=c.messages.length-1;j>=0;j--){
+      if(c.messages[j].role==='ai'){i=j;break;}
+    }
+  }
+  
+  if(i<0){toast('❌ 找不到消息');return;}
   const msg=c.messages[i];
   if(!msg){toast('❌ 找不到消息');return;}
   if(msg.role!=='ai'){toast('⚠️ 只能重新生成AI回复');return;}
   
-  // 修复：确保swipes数据正确
+  // 确保swipes数据正确
   if(!msg.swipes||!msg.swipes.length){
     msg.swipes=[msg.content||''];
     msg.swipeIdx=0;
   }
   
-  // 如果当前内容是报错信息，重置swipeIdx让swipeNew能正常工作
-  if(msg.content&&msg.content.startsWith('❌')){
-    // 不需要特殊处理，swipeNew会自动追加新的swipe
+  // 如果当前内容是报错信息，移除这条错误swipe
+  if(msg.content&&(msg.content.startsWith('❌')||msg.content.includes('Failed to fetch')||msg.content.includes('Error'))){
+    // 移除错误的swipe，这样不会留下无用的报错记录
+    const errIdx=msg.swipeIdx;
+    if(msg.swipes.length>1){
+      msg.swipes.splice(errIdx,1);
+      msg.swipeIdx=Math.max(0,errIdx-1);
+      msg.content=msg.swipes[msg.swipeIdx];
+    }
   }
   
   await swipeNew(i);
@@ -4976,6 +5333,7 @@ function renderTags(html){
     var timeH=time?'<div class="proph-time">'+esc(time)+'</div>':'';
     return '<div class="tag-prophecy"><div class="proph-stars">'+starsH+'</div><div class="proph-header"><div class="proph-eye">'+esc(icon)+'</div><div class="proph-title">'+esc(title)+'</div>'+sourceH+'</div><div class="proph-divider"></div><div class="proph-body"><div class="proph-text">'+fmtInner(content)+'</div></div><div class="proph-footer">'+timeH+'</div></div>';
   });
+
   return html;
 }
 
@@ -5101,6 +5459,7 @@ function fmt(text){
   });
   if(cursor<text.length){result+=formatSegment(text.slice(cursor));}
   if(!pieces.length){result=formatSegment(text);}
+  result=renderTags(result);
 
   // 修复未闭合标签
   var detailsOpen=(result.split('<details').length-1)-(result.split('</details>').length-1);
@@ -5323,12 +5682,8 @@ if(/^USER\s*:/i.test(b)){role='user';content=b.replace(/^USER\s*:\s*/i,'');}
 
 function parseChatboxMd(text){
   const messages=[];
-  
-  // 先尝试Chatbox的 **role**: 格式
   var hasChatboxFmt=/\*\*(user|assistant|system)\*\*\s*:\s*\n/i.test(text);
-  
   if(hasChatboxFmt){
-    // Chatbox MD格式: **user**: \n内容 / **assistant**: \n内容
     var parts=text.split(/(?=\*\*(?:user|assistant|system)\*\*\s*:\s*\n)/gi);
     for(var i=0;i<parts.length;i++){
       var b=parts[i].trim();
@@ -5344,18 +5699,18 @@ function parseChatboxMd(text){
         continue;
       }
       content=content.trim();
-      // 去掉末尾可能的分隔线和Chatbox签名
       content=content.replace(/\n*-{4,}\s*\n*$/,'').trim();
       content=content.replace(/\n*Chatbox AI[\s\S]*$/i,'').trim();
-      if(content){
-        if(role==='ai') content=extractHTMLFromCodeBlocks(content);
-        messages.push({role,content});
+      if(content&&role==='ai'){
+        content=extractHTMLFromCodeBlocks(content);
+        content=content.replace(/^\s*`{3,}\s*$/gm,'').trim();
+        content=content.replace(/\n*-{10,}\s*$/,'').trim();
+        content=content.replace(/<a\s+href="https:\/\/chatboxai\.app"[\s\S]*$/i,'').trim();
       }
+      if(content) messages.push({role,content});
     }
     return messages;
   }
-  
-  // 回退：原有的 ## USER / ► USER 格式
   var blocks=text.split(/(?=^#{1,3}\s*(?:USER|ASSISTANT|用户|助手|AI)\s*:?\s*$)|(?=►\s*(?:USER|ASSISTANT)\s*:)/gim);
   for(var j=0;j<blocks.length;j++){
     var b2=blocks[j].trim();
@@ -5371,10 +5726,11 @@ function parseChatboxMd(text){
       continue;
     }
     content2=content2.trim();
-    if(content2){
-      if(role2==='ai') content2=extractHTMLFromCodeBlocks(content2);
-      messages.push({role:role2,content:content2});
+    if(content2&&role2==='ai'){
+      content2=extractHTMLFromCodeBlocks(content2);
+      content2=content2.replace(/^\s*`{3,}\s*$/gm,'').trim();
     }
+    if(content2) messages.push({role:role2,content:content2});
   }
   return messages;
 }
