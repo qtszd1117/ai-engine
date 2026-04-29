@@ -1001,6 +1001,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC
 [data-theme="light"] .tag-prophecy .proph-text .proph-key{color:#b88020;text-shadow:none;}
 [data-theme="light"] .tag-prophecy .proph-verse{background:rgba(100,60,180,0.06);color:#6a40b0;border-left-color:#8a60cc;}
 [data-theme="light"] .tag-prophecy .proph-warning{background:rgba(255,80,80,0.06);color:#cc4040;}
+/* 思考链样式 */
+.msg-bubble details summary:hover {
+  background: var(--accent-dim);
+}
+.msg-bubble details[open] summary {
+  border-bottom: 1px solid var(--border);
+}
 </style>
 </head>
 <body>
@@ -3473,9 +3480,9 @@ A.worldbooks=A.worldbooks.filter(wb=>wb&&wb.id);
       <!-- 可收起的内容区域，默认隐藏 -->
       <div id="wb-section-${wIdx}" style="display:none;">
         <div class="form-group" style="margin-bottom:8px;">
-          <label>预算(最大6000)</label>
+          <label>预算(最大20000)</label>
           <div class="slider-group">
-            <input type="range" min="100" max="6000" step="100" value="${wb.tokenBudget}" oninput="updateWBB('${wb.id}',this.value);uSlider(this);">
+            <input type="range" min="100" max="20000" step="100" value="${wb.tokenBudget}" oninput="updateWBB('${wb.id}',this.value);uSlider(this);">
             <span class="slider-value">${wb.tokenBudget}</span>
           </div>
         </div>
@@ -4215,7 +4222,7 @@ async function swipeNew(msgIdx){
       try{
       while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';
         for(const line of lines){const t=line.trim();if(!t||!t.startsWith('data:'))continue;const d=t.slice(5).trim();if(d==='[DONE]')continue;
-          try{const j=JSON.parse(d);const delta=j.choices?.[0]?.delta?.content;if(delta){full+=delta;if(bubEl)bubEl.innerHTML=fmt(full);goBot();}}catch(e){}}}
+          try{const j=JSON.parse(d);let delta=j.choices?.[0]?.delta?.content;if(!delta&&j.choices?.[0]?.delta?.content_block){const block=j.choices[0].delta.content_block;if(block.type==='thinking')delta='<thinking>'+block.thinking+'</thinking>';else if(block.type==='text')delta=block.text;}if(!delta&&j.type==='content_block_delta'){if(j.delta?.type==='thinking_delta')delta='<thinking>'+j.delta.thinking;else if(j.delta?.type==='text_delta')delta=j.delta.text;}if(delta){full+=delta;if(bubEl)bubEl.innerHTML=fmt(full);goBot();}}catch(e){}}}
       }catch(streamErr){if(full.trim()){console.warn('流中断',streamErr);}else{throw streamErr;}}
     }else{
       const data=await r.json();
@@ -4450,8 +4457,12 @@ async function sendMessage(){
       try{
         while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';
         for(const line of lines){const t=line.trim();if(!t||!t.startsWith('data:'))continue;const d=t.slice(5).trim();if(d==='[DONE]')continue;
-        try{const j=JSON.parse(d);const delta=j.choices?.[0]?.delta?.content;if(delta){full+=delta;bub.innerHTML=fmt(full);goBot();}}catch(e){}}}
+        try{const j=JSON.parse(d);let delta=j.choices?.[0]?.delta?.content;if(!delta&&j.choices?.[0]?.delta?.content_block){const block=j.choices[0].delta.content_block;if(block.type==='thinking')delta='<thinking>'+block.thinking+'</thinking>';else if(block.type==='text')delta=block.text;}if(!delta&&j.type==='content_block_delta'){if(j.delta?.type==='thinking_delta')delta='<thinking>'+j.delta.thinking;else if(j.delta?.type==='text_delta')delta=j.delta.text;}if(delta){full+=delta;bub.innerHTML=fmt(full);goBot();}}catch(e){}}}
       }catch(streamErr){if(full.trim()){console.warn('流中断',streamErr);}else{throw streamErr;}}
+            // 清理未闭合的thinking标签（流式中断时）
+      if(full.includes('<thinking>') && !full.includes('</thinking>')){
+        full=full.replace(/<thinking>([\s\S]*)$/, '<thinking>$1</thinking>');
+      }
       full=applyRegex(full,'output');full=PluginManager.runHook('onAfterReceive',full)||full;
       full=handleMusicCommands(full);
       bub.innerHTML=fmt(full);
@@ -4461,6 +4472,10 @@ async function sendMessage(){
       document.getElementById('status-text').textContent='等待回复...';
       const data=await r.json();
       full=data.choices?.[0]?.message?.content||'';
+            // 清理未闭合的thinking标签（流式中断时）
+      if(full.includes('<thinking>') && !full.includes('</thinking>')){
+        full=full.replace(/<thinking>([\s\S]*)$/, '<thinking>$1</thinking>');
+      }
       full=applyRegex(full,'output');full=PluginManager.runHook('onAfterReceive',full)||full;
       full=handleMusicCommands(full);
     }
@@ -5783,6 +5798,31 @@ function fmt(text){
   function formatSegment(seg){
     return hasHTML?fmtHybrid(seg):fmtMd(esc(seg));
   }
+  
+    // 处理思考链：把 <thinking> 内容折叠显示
+  result=result.replace(/<thinking>([\s\S]*?)<\/thinking>/gi, function(m, content) {
+    var thinkText = content.trim();
+    if (!thinkText) return '';
+    // 统计思考token数
+    var thinkTok = 0;
+    for (var i = 0; i < thinkText.length; i++) {
+      var code = thinkText.charCodeAt(i);
+      if (code >= 0x4E00 && code <= 0x9FFF) thinkTok += 0.7;
+      else if (code > 127) thinkTok += 0.5;
+      else thinkTok += 0.25;
+    }
+    thinkTok = Math.ceil(thinkTok);
+    // 渲染为可折叠面板
+    return '<details style="margin:0 0 10px 0;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-input);overflow:hidden;">'
+      + '<summary style="padding:8px 12px;cursor:pointer;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;user-select:none;">'
+      + '<span style="font-size:13px;">💭</span>'
+      + '<span>思考过程</span>'
+      + '<span style="margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);padding:1px 8px;border-radius:10px;">≈' + thinkTok + ' tok</span>'
+      + '</summary>'
+      + '<div style="padding:10px 14px;font-size:12px;line-height:1.8;color:var(--text-secondary);border-top:1px solid var(--border);max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">'
+      + esc(thinkText)
+      + '</div></details>';
+  });
 
   pieces.forEach(function(p){
     if(p.start>cursor){result+=formatSegment(text.slice(cursor,p.start));}
